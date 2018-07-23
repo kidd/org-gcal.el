@@ -223,7 +223,7 @@ SKIP-EXPORT.  Set SILENT to non-nil to inhibit notifications."
                                    status))
                        (org-gcal--notify
                         "Received HTTP 401"
-                        "OAuth token expired. Now trying to refresh-token")
+                        "org-gcal-sync: OAuth token expired. Now trying to refresh-token")
                        (deferred:next
                          (lambda()
                            (org-gcal-refresh-token 'org-gcal-sync skip-export))))
@@ -410,56 +410,68 @@ It returns the code provided by the service."
 
 (defun org-gcal-request-token ()
   "Refresh OAuth access at TOKEN-URL."
-  (request
-   org-gcal-token-url
-   :type "POST"
-   :data `(("client_id" . ,org-gcal-client-id)
-           ("client_secret" . ,org-gcal-client-secret)
-           ("code" . ,(org-gcal-request-authorization))
-           ("redirect_uri" .  "urn:ietf:wg:oauth:2.0:oob")
-           ("grant_type" . "authorization_code"))
-   :parser 'org-gcal--json-read
-   :success (cl-function
-             (lambda (&key data &allow-other-keys)
-               (when data
-                 (setq org-gcal-token-plist data)
-                 (org-gcal--save-sexp data org-gcal-token-file))))
-   :error
-   (cl-function (lambda (&key error-thrown &allow-other-keys)
-                  (message "Got error: %S" error-thrown)))))
+  (org-gcal--with-saved-state
+   state
+   (request
+    org-gcal-token-url
+    :type "POST"
+    :data `(("client_id" . ,org-gcal-client-id)
+            ("client_secret" . ,org-gcal-client-secret)
+            ("code" . ,(org-gcal-request-authorization))
+            ("redirect_uri" .  "urn:ietf:wg:oauth:2.0:oob")
+            ("grant_type" . "authorization_code"))
+    :parser 'org-gcal--json-read
+    :success (cl-function
+              (lambda (&key data &allow-other-keys)
+                (org-gcal--with-restored-state
+                 state
+                 (message "org-gcal-request-token: %S %s" data org-gcal-token-file)
+                 (when data
+                   (setq org-gcal-token-plist data)
+                   (org-gcal--save-sexp data org-gcal-token-file)))))
+    :error
+    (cl-function (lambda (&key error-thrown &allow-other-keys)
+                   (message "Got error: %S" error-thrown))))))
 
 (defun org-gcal-refresh-token (&optional fun skip-export start end smry loc desc calendar-id event-id)
   "Refresh OAuth access and call FUN after that.
 Pass SKIP-EXPORT, START, END, SMRY, LOC, DESC, CALENDAR-ID, and EVENT-ID to FUN if
 needed."
-  (deferred:$
-    (request-deferred
-     org-gcal-token-url
-     :type "POST"
-     :data `(("client_id" . ,org-gcal-client-id)
-             ("client_secret" . ,org-gcal-client-secret)
-             ("refresh_token" . ,(org-gcal--get-refresh-token))
-             ("grant_type" . "refresh_token"))
-     :parser 'org-gcal--json-read
-     :error
-     (cl-function (lambda (&key error-thrown &allow-other-keys)
-                    (message "Got error: %S" error-thrown))))
-    (deferred:nextc it
-      (lambda (response)
-        (let ((temp (request-response-data response)))
-          (plist-put org-gcal-token-plist
-                     :access_token
-                     (plist-get temp :access_token))
-          (org-gcal--save-sexp org-gcal-token-plist org-gcal-token-file)
-          org-gcal-token-plist)))
-    (deferred:nextc it
-      (lambda (token)
-        (cond ((eq fun 'org-gcal-sync)
-               (org-gcal-sync (plist-get token :access_token) skip-export))
-              ((eq fun 'org-gcal--post-event)
-               (org-gcal--post-event start end smry loc desc calendar-id event-id (plist-get token :access_token)))
-              ((eq fun 'org-gcal--delete-event)
-               (org-gcal--delete-event event-id calendar-id (plist-get token :access_token))))))))
+  (interactive)
+  (org-gcal--with-saved-state
+   state
+   (deferred:$
+     (request-deferred
+      org-gcal-token-url
+      :type "POST"
+      :data `(("client_id" . ,org-gcal-client-id)
+              ("client_secret" . ,org-gcal-client-secret)
+              ("refresh_token" . ,(org-gcal--get-refresh-token))
+              ("grant_type" . "refresh_token"))
+      :parser 'org-gcal--json-read
+      :error
+      (cl-function (lambda (&key error-thrown &allow-other-keys)
+                     (message "org-gcal-refresh-token: Got error: %S" error-thrown))))
+     (deferred:nextc it
+       (lambda (response)
+         (org-gcal--with-restored-state
+          state
+          (let ((temp (request-response-data response)))
+            (plist-put org-gcal-token-plist
+                       :access_token
+                       (plist-get temp :access_token))
+            (org-gcal--save-sexp org-gcal-token-plist org-gcal-token-file)
+            org-gcal-token-plist))))
+     (deferred:nextc it
+       (lambda (token)
+         (org-gcal--with-restored-state
+          state
+          (cond ((eq fun 'org-gcal-sync)
+                 (org-gcal-sync (plist-get token :access_token) skip-export))
+                ((eq fun 'org-gcal--post-event)
+                 (org-gcal--post-event start end smry loc desc calendar-id event-id (plist-get token :access_token)))
+                ((eq fun 'org-gcal--delete-event)
+                 (org-gcal--delete-event event-id calendar-id (plist-get token :access_token))))))))))
 
 ;; Internal
 (defun org-gcal--archive-old-event ()
@@ -703,90 +715,102 @@ TO.  Instead an empty string is returned."
                   (buffer-name))))
 
 (defun org-gcal--post-event (start end smry loc desc calendar-id &optional event-id a-token skip-import skip-export)
-  (let ((stime (org-gcal--param-date start))
-        (etime (org-gcal--param-date end))
-        (stime-alt (org-gcal--param-date-alt start))
-        (etime-alt (org-gcal--param-date-alt end))
-        (a-token (if a-token
-                     a-token
-                   (org-gcal--get-access-token))))
-    (request
-     (concat
-      (format org-gcal-events-url calendar-id)
-      (when event-id
-        (concat "/" event-id)))
-     :type (if event-id "PATCH" "POST")
-     :headers '(("Content-Type" . "application/json"))
-     :data (encode-coding-string
-            (json-encode `(("start" (,stime . ,start) (,stime-alt . nil))
-                           ("end" (,etime . ,(if (equal "date" etime)
-                                                 (org-gcal--iso-next-day end)
-                                               end)) (,etime-alt . nil))
-                           ("summary" . ,smry)
-                           ("location" . ,loc)
-                           ("description" . ,desc)))
-            'utf-8)
-     :params `(("access_token" . ,a-token)
-               ("key" . ,org-gcal-client-secret)
-               ("grant_type" . "authorization_code"))
+  (org-gcal--with-saved-state
+   state
+   (let ((stime (org-gcal--param-date start))
+         (etime (org-gcal--param-date end))
+         (stime-alt (org-gcal--param-date-alt start))
+         (etime-alt (org-gcal--param-date-alt end))
+         (a-token (if a-token
+                      a-token
+                    (org-gcal--get-access-token))))
+     (request
+      (concat
+       (format org-gcal-events-url calendar-id)
+       (when event-id
+         (concat "/" event-id)))
+      :type (if event-id "PATCH" "POST")
+      :headers '(("Content-Type" . "application/json"))
+      :data (encode-coding-string
+             (json-encode `(("start" (,stime . ,start) (,stime-alt . nil))
+                            ("end" (,etime . ,(if (equal "date" etime)
+                                                  (org-gcal--iso-next-day end)
+                                                end)) (,etime-alt . nil))
+                            ("summary" . ,smry)
+                            ("location" . ,loc)
+                            ("description" . ,desc)))
+             'utf-8)
+      :params `(("access_token" . ,a-token)
+                ("key" . ,org-gcal-client-secret)
+                ("grant_type" . "authorization_code"))
 
-     :parser 'org-gcal--json-read
-     :error (cl-function
-             (lambda (&key response &allow-other-keys)
-               (let ((status (request-response-status-code response))
-                     (error-msg (request-response-error-thrown response)))
-                 (cond
-                  ((eq status 401)
-                   (progn
+      :parser 'org-gcal--json-read
+      :error (cl-function
+              (lambda (&key response &allow-other-keys)
+                (org-gcal--with-restored-state
+                 state
+                 (let ((status (request-response-status-code response))
+                       (error-msg (request-response-error-thrown response)))
+                   (cond
+                    ((eq status 401)
+                     (progn
+                       (org-gcal--notify
+                        "Received HTTP 401"
+                        "org-gcal--post-event: OAuth token expired. Now trying to refresh-token")
+                       (org-gcal-refresh-token 'org-gcal--post-event skip-export start end smry loc desc calendar-id event-id)))
+                    (t
                      (org-gcal--notify
-                      "Received HTTP 401"
-                      "OAuth token expired. Now trying to refresh-token")
-                     (org-gcal-refresh-token 'org-gcal--post-event skip-export start end smry loc desc calendar-id event-id)))
-                  (t
-                   (org-gcal--notify
-                    (concat "Status code: " (pp-to-string status))
-                    (pp-to-string error-msg)))))))
-     :success (cl-function
-               (lambda (&key data &allow-other-keys)
-                 (progn
-                   (org-gcal--notify "Event Posted"
-                                     (concat "Org-gcal post event\n  " (plist-get data :summary)))
-                   (unless skip-import (org-gcal-fetch))))))))
+                      (concat "Status code: " (pp-to-string status))
+                      (pp-to-string error-msg))))))))
+
+      :success (cl-function
+                (lambda (&key data &allow-other-keys)
+                  (org-gcal--with-restored-state
+                   state
+                   (progn
+                     (org-gcal--notify "Event Posted"
+                                       (concat "Org-gcal post event\n  " (plist-get data :summary)))
+                     (unless skip-import (org-gcal-fetch))))))))))
 
 (defun org-gcal--delete-event (event-id calendar-id &optional a-token skip-import skip-export)
-  (let ((skip-import skip-import)
-        (a-token (if a-token
-                     a-token
-                   (org-gcal--get-access-token))))
-    (request
-     (concat
-      (format org-gcal-events-url calendar-id)
-      (concat "/" event-id))
-     :type "DELETE"
-     :headers '(("Content-Type" . "application/json"))
-     :params `(("access_token" . ,a-token)
-               ("key" . ,org-gcal-client-secret)
-               ("grant_type" . "authorization_code"))
-     :error (cl-function
-             (lambda (&key response &allow-other-keys)
-               (let ((status (request-response-status-code response))
-                     (error-msg (request-response-error-thrown response)))
-                 (cond
-                  ((eq status 401)
-                   (progn
+  (org-gcal--with-saved-state
+   state
+   (let ((skip-import skip-import)
+         (a-token (if a-token
+                      a-token
+                    (org-gcal--get-access-token))))
+     (request
+      (concat
+       (format org-gcal-events-url calendar-id)
+       (concat "/" event-id))
+      :type "DELETE"
+      :headers '(("Content-Type" . "application/json"))
+      :params `(("access_token" . ,a-token)
+                ("key" . ,org-gcal-client-secret)
+                ("grant_type" . "authorization_code"))
+      :error (cl-function
+              (lambda (&key response &allow-other-keys)
+                (org-gcal--with-restored-state
+                 state
+                 (let ((status (request-response-status-code response))
+                       (error-msg (request-response-error-thrown response)))
+                   (cond
+                    ((eq status 401)
+                     (progn
+                       (org-gcal--notify
+                        "Received HTTP 401"
+                        "org-gcal--delete-event: OAuth token expired. Now trying to refresh-token")
+                       (org-gcal-refresh-token 'org-gcal--delete-event skip-export nil nil nil nil nil calendar-id event-id)))
+                    (t
                      (org-gcal--notify
-                      "Received HTTP 401"
-                      "OAuth token expired. Now trying to refresh-token")
-                     (org-gcal-refresh-token 'org-gcal--delete-event skip-export nil nil nil nil nil calendar-id event-id)))
-                  (t
-                   (org-gcal--notify
-                    (concat "Status code: " (pp-to-string status))
-                    (pp-to-string error-msg)))))))
-     :success (cl-function
-               (lambda (&key &allow-other-keys)
-                 (progn
+                      (concat "Status code: " (pp-to-string status))
+                      (pp-to-string error-msg))))))))
+      :success (cl-function
+                (lambda (&key data &allow-other-keys)
+                  (org-gcal--with-restored-state
+                   state
                    (org-gcal-fetch)
-                   (org-gcal--notify "Event Deleted" "Org-gcal deleted event")))))))
+                   (org-gcal--notify "Event Deleted" "Org-gcal deleted event"))))))))
 
 (defun org-gcal--capture-post ()
   (dolist (i org-gcal-file-alist)
