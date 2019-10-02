@@ -905,22 +905,12 @@ an error will be thrown. Point is not preserved."
         ((timestamp
           (if (or (string= start end) (org-gcal--alldayp start end))
               (org-gcal--format-iso2org start)
-            (if (and
-                 (= (plist-get (org-gcal--parse-date start) :year)
-                    (plist-get (org-gcal--parse-date end)   :year))
-                 (= (plist-get (org-gcal--parse-date start) :mon)
-                    (plist-get (org-gcal--parse-date end)   :mon))
-                 (= (plist-get (org-gcal--parse-date start) :day)
-                    (plist-get (org-gcal--parse-date end)   :day)))
-                (format "<%s-%s>"
-                        (org-gcal--format-date start "%Y-%m-%d %a %H:%M")
-                        (org-gcal--format-date end "%H:%M"))
               (format "%s--%s"
                       (org-gcal--format-iso2org start)
                       (org-gcal--format-iso2org
                        (if (< 11 (length end))
                            end
-                         (org-gcal--iso-previous-day end))))))))
+                         (org-gcal--iso-previous-day end)))))))
       (if (org-element-property :scheduled elem)
           (org-schedule nil timestamp)
         (insert timestamp)
