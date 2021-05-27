@@ -290,6 +290,13 @@ entries."
 (defvar org-gcal-token-plist nil
   "Token plist.")
 
+(defcustom org-gcal-default-transparency "opaque"
+  "The default value to use for transparency when creating a new event.
+
+See: https://developers.google.com/calendar/v3/reference/events/insert."
+  :group 'org-gcal
+  :type 'string)
+
 (defconst org-gcal-auth-url "https://accounts.google.com/o/oauth2/auth"
   "Google OAuth2 server URL.")
 
@@ -1160,6 +1167,8 @@ For valid values of EXISTING-MODE see
            (smry (substring-no-properties
                   (org-get-heading 'no-tags 'no-todo 'no-priority 'no-comment)))
            (loc (org-entry-get (point) "LOCATION"))
+           (transparency (or (org-entry-get (point) "TRANSPARENCY")
+			      org-gcal-default-transparency))
            (recurrence (org-entry-get (point) "recurrence"))
            (event-id (org-gcal--get-id (point)))
            (etag (org-entry-get (point) org-gcal-etag-property))
@@ -1228,7 +1237,7 @@ For valid values of EXISTING-MODE see
                   end (org-gcal--format-time2iso end-time))))
         (when recurrence
           (setq start nil end nil))
-        (org-gcal--post-event start end smry loc desc calendar-id marker etag
+        (org-gcal--post-event start end smry loc desc calendar-id marker transparency etag
                               event-id nil skip-import skip-export)))))
 
 ;;;###autoload
@@ -1591,6 +1600,7 @@ heading."
                     "busy"))
          (desc  (plist-get event :description))
          (loc   (plist-get event :location))
+         (transparency   (plist-get event :transparency))
          (_link  (plist-get event :htmlLink))
          (meet  (plist-get event :hangoutLink))
          (etag (plist-get event :etag))
@@ -1615,6 +1625,7 @@ heading."
     (org-entry-put (point) org-gcal-etag-property etag)
     (when recurrence (org-entry-put (point) "recurrence" (format "%s" recurrence)))
     (when loc (org-entry-put (point) "LOCATION" loc))
+    (when transparency (org-entry-put (point) "TRANSPARENCY" transparency))
     (when meet
       (org-entry-put
        (point)
@@ -1801,7 +1812,7 @@ object."
              ;; Fetch was successful.
              (t response))))))))
 
-(defun org-gcal--post-event (start end smry loc desc calendar-id marker &optional etag event-id a-token skip-import skip-export)
+(defun org-gcal--post-event (start end smry loc desc calendar-id marker transparency &optional etag event-id a-token skip-import skip-export)
   "\
 Creates or updates an event on Calendar CALENDAR-ID with attributes START, END,
 SMRY, LOC, DESC. The Org buffer and point from which the event is read is given
@@ -1847,6 +1858,7 @@ Returns a ‘deferred’ object that can be used to wait for completion."
                     (append
                      `(("summary" . ,smry)
                        ("location" . ,loc)
+                       ("transparency" . ,transparency)
                        ("description" . ,desc))
                      (if (and start end)
                          `(("start" (,stime . ,start) (,stime-alt . nil))
@@ -1880,7 +1892,7 @@ Returns a ‘deferred’ object that can be used to wait for completion."
                   (deferred:nextc it
                     (lambda (_unused)
                       (org-gcal--post-event start end smry loc desc calendar-id
-                                            marker etag event-id nil
+                                            marker transparency etag event-id nil
                                             skip-import skip-export)))))
                ;; ETag on current entry is stale. This means the event on the
                ;; server has been updated. In that case, update the event using
