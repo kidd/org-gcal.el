@@ -1237,17 +1237,22 @@ under another heading in the same file."
   (let ((org-archive-location "::* Archived")  ; Make the archive this same buffer
         (test-time "2022-01-30 Sun 01:23")
         (buf "\
+#+CATEGORY: Test
+
 * Event Title
 :PROPERTIES:
 :org-gcal-managed: something
 :END:
 <2021-01-01 Fri 12:34-14:35>
 "))
-    (org-test-at-time (format "<%s>" test-time)
-      (org-test-with-temp-text-in-file
-          buf
-        (let* ((buf-category (org-get-category (point-max) 'force-refresh))
-               (target-buf (format "\
+    (org-test-with-temp-text-in-file
+        buf
+      (org-test-at-time (format "<%s>" test-time)
+        ;; Ensure property drawer is not indented
+        (setq-local org-adapt-indentation nil)
+        (let* ((target-buf (format "\
+#+CATEGORY: Test
+
 * Archived
 
 ** Event Title
@@ -1255,25 +1260,19 @@ under another heading in the same file."
 :org-gcal-managed: something
 :ARCHIVE_TIME: %s
 :ARCHIVE_FILE: %s
-:ARCHIVE_CATEGORY: %s
+:ARCHIVE_CATEGORY: Test
 :END:
 <2021-01-01 Fri 12:34-14:35>
-" test-time file buf-category)))  ; The variable `file' is the current file name
-                                  ; under the macro `org-test-with-temp-text-in-file'
-          ;
-          ; The old error: try to parse a headline when not starting at the beginning
-          (should-error
-           (progn (goto-char 2)
-                  (org-element-headline-parser (point-max) t))
-           :type 'error)
-
+"
+                                   test-time
+                                   ; The variable `file' is the current file
+                                   ; name under the macro
+                                   ; `org-test-with-temp-text-in-file'
+                                   file)))
           (org-gcal--archive-old-event)
-          (should
-           (equal
-            target-buf
-            (buffer-substring-no-properties (point-min) (point-max)))))))))
-
-(ert 'org-gcal-test--headline-archive-old-event)
+          (let ((bufstr
+                 (buffer-substring-no-properties (point-min) (point-max))))
+            (should (string-equal bufstr target-buf))))))))
 
 ;;; TODO: Figure out mocking for POST/PATCH followed by GET
 ;;; - ‘mock‘ might work for this - the argument list must be specified up
