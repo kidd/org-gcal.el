@@ -1,7 +1,7 @@
 ;;; org-gcal-test.el --- Tests for org-gcal.el -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2019 Robert Irelan
-;; Package-Requires: ((org-gcal) (el-mock) (emacs "26"))
+;; Package-Requires: ((org-gcal) (el-mock) (emacs "26") (load-relative "1.3"))
 
 ;; Author: Robert Irelan <rirelan@gmail.com>
 
@@ -29,9 +29,9 @@
 (require 'org-gcal)
 (require 'cl-lib)
 (require 'el-mock)
-(let* ((org-el-source (file-truename (locate-library "org.el")))
-       (org-root-dir (f-dirname (f-dirname org-el-source))))
-  (require 'org-test (concat org-root-dir "/testing/org-test.el")))
+(require 'load-relative)
+(unless (featurep 'org-test)
+  (load-relative "org-test"))
 
 (defconst org-gcal-test-calendar-id "foo@foobar.com")
 

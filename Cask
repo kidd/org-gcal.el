@@ -9,4 +9,5 @@
   ;; than the one included with Emacs.  See <https://github.com/cask/cask/issues/169>.
   (depends-on "org-plus-contrib")
   (depends-on "el-mock")
-  (depends-on "ert-runner"))
+  (depends-on "ert-runner")
+  (depends-on "load-relative"))
