@@ -1,3 +1,4 @@
+THIS_MAKEFILE_DIR = $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 EMACS ?= emacs
 SRC=org-gcal.el org-generic-id.el
 TEST=test/org-gcal-test.el test/org-generic-id-test.el
@@ -24,4 +25,5 @@ compile: $(SRC) elpa
 	! ( grep -E -e ':(Warning|Error):' $(BUILD_LOG) )
 
 test: $(SRC) $(TEST) elpa
-	$(CASK) exec ert-runner -L . -L test/
+	$(CASK) exec ert-runner -L $(THIS_MAKEFILE_DIR) \
+		$(foreach test,$(TEST),-l $(addprefix $(THIS_MAKEFILE_DIR)/,$(test)))

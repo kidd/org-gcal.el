@@ -2,3 +2,5 @@
 .load-path.el
 .cask
 build.log
+
+flycheck_*.el
