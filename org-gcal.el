@@ -286,6 +286,11 @@ entries."
   :group 'org-gcal
   :type 'string)
 
+(defcustom org-gcal-event-default-duration 5
+  "Default duration of events in minutes."
+  :group 'org-gcal
+  :type 'integer)
+
 (defvar org-gcal--sync-lock nil
   "Set if a sync function is running.")
 
@@ -1297,12 +1302,11 @@ For valid values of EXISTING-MODE see
              (desc (plist-get time-desc :desc)))
         (unless end
           (let* ((start-time (or start (org-read-date 'with-time 'to-time)))
-                 (min-duration 5)
                  (resolution 5)
                  (duration-default
                   (org-duration-from-minutes
                    (max
-                    min-duration
+                    org-gcal-event-default-duration
                     ;; Round up to the nearest multiple of ‘resolution’ minutes.
                     (* resolution
                        (ceiling
