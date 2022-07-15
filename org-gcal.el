@@ -340,16 +340,22 @@ Persisted between sessions of Emacs.  To clear sync tokens, call
 
 This is a macro instead of a function so that it can be used as a place
 expression in ‘setf’.  In that case, if REMOVE? is non-nil, the key-value
-pair will be removed instead of set.
-
-AIO version: ‘org-gcal-sync-aio'."
+pair will be removed instead of set."
   `(alist-get ,key org-gcal--sync-tokens nil ,remove? #'equal))
+
+(defmacro org-gcal--aio-wait-for-background-interactive (promise &optional interactive)
+  "If INTERACTIVE or the calling function is called interactively, run PROMISE in background. Otherwise, just return PROMISE."
+  `(if (or ,interactive (called-interactively-p 'any))
+       (org-gcal--aio-wait-for-background ,promise)
+     ,promise))
 
 ;;;###autoload
 (defun org-gcal-sync (&optional skip-export silent)
   "Import events from calendars.
 Export the ones to the calendar if unless
-SKIP-EXPORT.  Set SILENT to non-nil to inhibit notifications."
+SKIP-EXPORT.  Set SILENT to non-nil to inhibit notifications.
+
+AIO version: ‘org-gcal-sync-aio'."
   (interactive)
   (when org-gcal--sync-lock
     (user-error "org-gcal sync locked. If a previous sync has failed, call ‘org-gcal--sync-unlock’ to reset the lock and try again."))
@@ -436,7 +442,7 @@ SKIP-EXPORT.  Set SILENT to non-nil to inhibit notifications."
         (org-gcal--sync-unlock)
         (org-gcal--notify
          "Org-gcal sync encountered error"
-         (format-string "%S" err)))
+         (format "%S" err)))
        (:success
         (org-gcal--sync-unlock)))
       nil))))
@@ -3168,13 +3174,6 @@ background processes."
                   (signal (car err) (cdr err)))))
              timer-cell))
     (car timer-cell)))
-
-(defmacro org-gcal--aio-wait-for-background-interactive (promise &optional interactive)
-  "If INTERACTIVE or the calling function is called interactively, run PROMISE in background. Otherwise, just return PROMISE."
-  `(if (or ,interactive (called-interactively-p 'any))
-       (org-gcal--aio-wait-for-background ,promise)
-     ,promise))
-
 
 (cl-defun org-gcal--aio-request (url &rest settings)
   "Wraps ‘request' in a promise.
