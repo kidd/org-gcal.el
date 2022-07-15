@@ -3217,7 +3217,7 @@ keys are used by this function to set up the promise resolution."
             (aio-listen promise
                         (apply-partially
                          (cl-defun org-gcal--aio-request--cancel (resp value-function)
-                           (condition-case-no-debug err
+                           (condition-case-unless-debug nil
                                (funcall value-function)
                              (aio-cancel
                               (request-abort resp))
