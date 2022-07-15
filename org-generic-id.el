@@ -11,10 +11,10 @@
 ;;
 ;;; Commentary:
 
-;; This file generalizes ‘org-id' to allow using any property, not just :ID:,
-;; to locate Org-mode entries. This library only handles storing IDs in entries,
+;; This file generalizes ‘org-id' to allow using any property, not just :ID:, to
+;; locate Org-mode entries.  This library only handles storing IDs in entries,
 ;; locating entries with a given ID, and storing a map of IDs to files
-;; containing such IDs. Generation of IDs must be handled by the user of the
+;; containing such IDs.  Generation of IDs must be handled by the user of the
 ;; library - unlike ‘org-id', no functions are provided to automatically
 ;; generate IDs.
 
@@ -42,7 +42,7 @@
   :type 'file)
 
 (defcustom org-generic-id-locations-file-relative nil
-  "Determines if org-generic-id-locations should be stored as relative links.
+  "Determines if `org-generic-id-locations' should be stored as relative links.
 Non-nil means that links to locations are stored as links
 relative to the location of where `org-generic-id-locations-file' is
 stored.
@@ -75,8 +75,7 @@ Example structure:
                 #s(hash-table size 2 test equal rehash-size 1.5
                               rehash-threshold 0.8125 data
                                         (\"other-id-1\" \"file3.org\"
-                                         \"other-id-2\" \"file4.org\"))))
-")
+                                         \"other-id-2\" \"file4.org\"))))")
 
 (defvar org-generic-id--files
   (org-generic-id--make-hash-table :weakness 'value)
@@ -161,11 +160,11 @@ With optional argument MARKERP, return the position as a new marker.
 
 Normally, if an entry with ID is not found, this function will run
 ‘org-generic-id-update-id-locations' in order to pick up any updates to the
-files, and then search again, before concluding an ID can’t be found. If
-CACHED is passed, that function will not be run.
+files, and then search again, before concluding an ID can’t be found.  If CACHED
+is passed, that function will not be run.
 
 Normally the ID will be searched for in the current buffer before updating ID
-locations. This behavior can be disabled with NO-FALLBACK."
+locations.  This behavior can be disabled with NO-FALLBACK."
   (cond
    ((symbolp id) (setq id (symbol-name id)))
    ((numberp id) (setq id (number-to-string id))))
@@ -187,11 +186,12 @@ locations. This behavior can be disabled with NO-FALLBACK."
 
 ;;;###autoload
 (defun org-generic-id-update-id-locations (id-prop &optional files silent)
-  "Scan relevant files for IDs.
+  "Scan relevant files for distinct ID values for the Org property ID-PROP.
 Store the relation between files and corresponding IDs.
 This will scan all agenda files, all associated archives, and all
 files currently mentioned in `org-generic-id-locations'.
-When FILES is given, scan also these files."
+When FILES is given, scan also these files.  When SILENT is non-nil, suppress
+diagnostic and progress messages."
   (interactive "sID Property: ")
   (let* ((files
           (delete-dups
@@ -325,7 +325,8 @@ When FILES is given, scan also these files."
 
 ;;;###autoload
 (defun org-generic-id-add-location (id-prop id file)
-  "Add the ID with location FILE to the database of ID locations."
+  "Add the ID with location FILE to the database of ID locations.
+ID-PROP is the Org property which ID is associated with."
   ;; Only when the buffer has a file
   (unless file
     (error "bug: ‘org-generic-id-add-locations' expects a file-visiting buffer"))
@@ -342,7 +343,7 @@ When FILES is given, scan also these files."
   (add-hook 'kill-emacs-hook 'org-generic-id-locations-save))
 
 (defun org-generic-id--locations-hash-to-alist (hash)
-  "Turn an org-generic-id hash into an alist, so it can be written to a file."
+  "Turn an ‘org-generic-id' HASH into an alist, so it can be written to a file."
   (let (res)
     (maphash
      (lambda (k v)
@@ -353,11 +354,11 @@ When FILES is given, scan also these files."
     res))
 
 (defun org-generic-id--hash-to-alist (hash)
-  "Turn a hash into an alist while reversing keys and values.
+  "Turn a HASH into an alist while reversing keys and values.
 
 Create an alist with each key being the distinct values in the original hash,
 and each value a list of all original hash keys that map to the key of the
-alist. For example, a hash
+alist.  For example, a hash
 
     {’id1’: ’file1’, ’id2’: ’file2’, ’id3’: ’file1’}
 
@@ -378,7 +379,7 @@ is turned into an alist like this:
     res))
 
 (defun org-generic-id--locations-alist-to-hash (list)
-  "Turn an org-generic-id location list into a hash table."
+  "Turn an org-generic-id location LIST into a hash table."
   (let ((res (org-generic-id--make-hash-table
               :size (apply '+ (mapcar 'length list)))))
     (mapc
@@ -388,7 +389,7 @@ is turned into an alist like this:
     res))
 
 (defun org-generic-id--alist-to-hash (list)
-  "Reverse the transformation made in ‘org-generic-id--hash-to-alist’."
+  "Reverse the transformation in LIST made in ‘org-generic-id--hash-to-alist’."
   (let ((res (org-generic-id--make-hash-table
               :size (apply '+ (mapcar 'length list))))
         f)
@@ -405,8 +406,8 @@ is turned into an alist like this:
 (defun org-generic-id-find-id-file (id-prop id &optional no-fallback)
   "Query the id database for the file in which this ID is located.
 
-If NO-FALLBACK is set, don’t fall back to current buffer if not found in
-‘org-generic-id-locations’."
+ID-PROP is the Org property for ID.  If NO-FALLBACK is set, don’t fall back to
+current buffer if not found in ‘org-generic-id-locations’."
   (or (and org-generic-id-locations
            (hash-table-p org-generic-id-locations)
            ;; Guard for errors in the ‘gethash’ call after this
@@ -423,6 +424,8 @@ If NO-FALLBACK is set, don’t fall back to current buffer if not found in
 
 If that files does not exist, or if it does not contain this ID,
 return nil.
+
+ID-PROP is the Org property for ID.
 
 The position is returned as a cons cell (file-name . position).  With
 optional argument MARKERP, return the position as a new marker."
@@ -443,7 +446,8 @@ optional argument MARKERP, return the position as a new marker."
         (unless (or visiting markerp) (kill-buffer buffer)))))))
 
 (cl-defun org-generic-id-files-modified-since-modtime (modtime files &optional file-to-buf)
-  "Return all files modified since a certain time.
+  "Return all files in the list FILES modified since a certain time.
+
 MODTIME is a timestamp of the format returned by ‘current-time’.
 of filenames that should be checked.
 
