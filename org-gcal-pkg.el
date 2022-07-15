@@ -5,6 +5,7 @@
      (alert "1.2")
      (elnode "20190702.1509")
      (emacs "26.1")
+     (iter2 "1.0")
      (org "9.3")
      (persist "0.4")
      (request "20190901")
