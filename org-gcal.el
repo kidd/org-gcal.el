@@ -426,24 +426,24 @@ SKIP-EXPORT.  Set SILENT to non-nil to inhibit notifications."
   (let ((up-time (org-gcal--up-time))
         (down-time (org-gcal--down-time)))
     (condition-case err
-        (let*
-            ((promises
-              (cl-loop for calendar-id-file in org-gcal-fetch-file-alist
-                       collect
-                       (aio-iter2-with-async
-                         (aio-await
-                          (org-gcal--sync-calendar-aio
-                           calendar-id-file skip-export silent
-                           up-time down-time))
-                         (org-gcal--notify "Completed event fetching ."
-                                            (concat "Events fetched into\n"
-                                                   (cdr calendar-id-file))
-                                            silent))))
-             (select (aio-make-select promises)))
-          (cl-loop repeat (length promises)
-                   for next = (aio-await (aio-select select))
-                   do (aio-await next))
-          nil)
+        (let ((calendar-id-file (nth 1 org-gcal-fetch-file-alist)))
+          (org-gcal-tmp-dbgmsg "Processing %S..." calendar-id-file)
+          (let ((x
+                 (aio-await (org-gcal--sync-calendar-promise
+                             calendar-id-file skip-export silent up-time down-time))))
+            (org-gcal-tmp-dbgmsg "result: %S" x))
+          (org-gcal-tmp-dbgmsg "Processing done: %S" calendar-id-file))
+        ;; (let*
+        ;;     ((promises
+        ;;       (cl-loop for calendar-id-file in org-gcal-fetch-file-alist
+        ;;                collect
+        ;;                (org-gcal--sync-calendar-promise
+        ;;                 calendar-id-file skip-export silent up-time down-time)))
+        ;;      (select (aio-make-select promises)))
+        ;;   (cl-loop repeat (length promises)
+        ;;            for next = (aio-await (aio-select select))
+        ;;            do (aio-await next))
+        ;;   nil)
       ((debug t)
        (org-gcal--sync-unlock)
        (org-gcal--notify
@@ -452,6 +452,22 @@ SKIP-EXPORT.  Set SILENT to non-nil to inhibit notifications."
       (:success
        (org-gcal--sync-unlock)))
     nil))
+
+(aio-iter2-defun org-gcal--sync-calendar-promise
+  (calendar-id-file skip-export silent up-time down-time)
+  "Inner loop for ‘org-gcal-sync-aio-promise'.
+
+For CALENDAR-ID-FILE SKIP-EXPORT SILENT UP-TIME DOWN-TIME see that function."
+  (aio-await
+   (org-gcal--sync-calendar-aio
+    calendar-id-file skip-export silent
+    up-time down-time))
+  (org-gcal--notify "Completed event fetching ."
+                    (concat "Events fetched into\n"
+                             (cdr calendar-id-file))
+                    silent)
+  (org-gcal-tmp-dbgmsg "returning nil")
+  (lambda () nil))
 
 (defun org-gcal--sync-calendar (calendar-id-file skip-export silent
                                 up-time down-time)
@@ -2411,7 +2427,7 @@ If UPDATE-MODE is passed, then the functions in
 ‘org-gcal-after-update-entry-functions' are called in order with the same
 arguments as passed to this function and the point moved to the beginning of the
 heading."
-  (org-gcal-tmp-dbgmsg "org-gcal--update-entry enter")
+  ;; (org-gcal-tmp-dbgmsg "org-gcal--update-entry enter")
   (unless (org-at-heading-p)
     (user-error "Must be on Org-mode heading."))
   (let* ((smry  (plist-get event :summary))
@@ -2547,8 +2563,8 @@ heading."
       (save-excursion
         (org-back-to-heading t)
         (org-gcal--handle-cancelled-entry)))
-    (org-gcal-tmp-dbgmsg "update-mode %S org-gcal-after-update-entry-functions %S"
-             update-mode org-gcal-after-update-entry-functions)
+    ;; (org-gcal-tmp-dbgmsg "update-mode %S org-gcal-after-update-entry-functions %S"
+    ;;          update-mode org-gcal-after-update-entry-functions)
     (when update-mode
       (cl-dolist (f org-gcal-after-update-entry-functions)
         (save-excursion
@@ -3260,26 +3276,28 @@ This is mainly meant for interactive functions that you wish to have run as
 background processes."
   ;; Store timer in a cons cell so that it can be modified by both the timer
   ;; function and this function.
+  (org-gcal-tmp-dbgmsg "org-gcal--aio-wait-for-background: %S" promise)
   (let ((timer-cell (cons nil nil)))
     (setcar timer-cell
             (run-at-time
              nil 0.5
              (cl-defun org-gcal--aio-wait-for-background-timer (promise tc)
-               (condition-case err
-                 (cond
-                   ((null (car tc)) nil)
-                   ((null (aio-result promise))
-                    (accept-process-output nil 0.001)
-                    nil)
-                   (t
-                     (cancel-timer (car tc))
-                     (org-gcal-tmp-dbgmsg "org-gcal--aio-wait-for-background: %S"
-                               (funcall (aio-result promise)))))
-                ;; Cancel timer on signal so that it doesn’t hang around forever.
-                (error
-                 (cancel-timer (car tc))
-                 (org-gcal-tmp-dbgmsg "org-gcal--aio-wait-for-background: error %s" err)
-                 (signal (car err) (cdr err)))))
+              (org-gcal-tmp-dbgmsg "org-gcal--aio-wait-for-background-timer: %S %S" promise tc)
+              (condition-case err
+                (cond
+                  ((null (car tc)) nil)
+                  ((null (aio-result promise))
+                   (accept-process-output nil 0.001)
+                   nil)
+                  (t
+                    (cancel-timer (car tc))
+                    (org-gcal-tmp-dbgmsg "org-gcal--aio-wait-for-background: promise result: %S"
+                                         (aio-result promise))))
+               ;; Cancel timer on signal so that it doesn’t hang around forever.
+               (error
+                (cancel-timer (car tc))
+                (org-gcal-tmp-dbgmsg "org-gcal--aio-wait-for-background-timer: error %s" err)
+                (signal (car err) (cdr err)))))
              promise
              timer-cell))
     (car timer-cell)))
@@ -3333,9 +3351,10 @@ since these keys are used by this function to set up the promise resolution."
                    (cl-defun org-gcal--aio-request--cancel (resp value-function)
                      (condition-case err
                          (progn
-                           (org-gcal-tmp-dbgmsg "cancel: about to call value-function: %S" value-function)
+                           ;; (org-gcal-tmp-dbgmsg "cancel: about to call value-function: %S" value-function)
                            (prog1 (funcall value-function)
-                             (org-gcal-tmp-dbgmsg "cancel: called value-function")))
+                             ;; (org-gcal-tmp-dbgmsg "cancel: called value-function")
+                             nil))
                        (aio-cancel
                         (request-abort resp)
                         (signal (car err) (cdr err)))))
@@ -3550,3 +3569,29 @@ For URL and SETTINGS see ‘org-gcal--aio-request’."
 (provide 'org-gcal)
 
 ;;; org-gcal.el ends here
+
+(lambda
+  (&rest args)
+  (let*
+      ((promise
+        (aio-promise))
+       (iter
+        (apply
+         (iter2-lambda nil
+           (aio-resolve promise
+                        (condition-case error
+                            (let
+                                ((result
+                                  (progn
+                                    (aio-await
+                                     (aio-sleep 2 'foobar))
+                                    'baz)))
+                              (lambda nil result))
+                          (error
+                           (lambda nil
+                             (signal
+                              (car error)
+                              (cdr error)))))))
+         args)))
+    (prog1 promise
+      (aio--step iter promise nil))))
