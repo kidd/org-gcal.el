@@ -700,7 +700,8 @@ Second paragraph
       (stub org-gcal--time-zone => '(0 "UTC"))
       (stub org-generic-id-add-location => nil)
       (stub org-gcal--ensure-token-aio => (aio-iter2-lambda () nil))
-      (stub org-gcal-request-token-aio => (aio-iter2-lambda () nil))
+      (stub org-gcal--get-access-token => "my_access_token")
+      (stub org-gcal--refresh-token-aio => (aio-iter2-lambda () "test_access_token"))
       (mock (org-gcal--post-event-aio
              "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
              "My event summary" "Foobar's desk"
@@ -815,8 +816,8 @@ returned from the Google Calendar API."
         (progn
           (elnode-start 'org-gcal-test--test-event-handler :port port)
           (org-gcal-test--with-mock-aio
-            (org-gcal-test--with-temp-buffer
-                "\
+           (org-gcal-test--with-temp-buffer
+            "\
 * Original summary
 :PROPERTIES:
 :ETag:     \"12344321\"
@@ -834,49 +835,50 @@ Original description
 Original second paragraph
 :END:
 "
-              (stub org-gcal--time-zone => '(0 "UTC"))
-              (stub org-generic-id-add-location => nil)
-              (stub org-gcal-request-token-aio-promise => (aio-iter2-lambda () nil))
-              (stub org-gcal--ensure-token-aio => (aio-iter2-lambda () nil))
-              (org-gcal-test--dynamic-let
-                  ((org-gcal-api-url (format "http://localhost:%d" port))
-                   (org-gcal-managed-post-at-point-update-existing 'always-push)
-                   (org-gcal-after-update-entry-functions '(org-gcal-test--update-entry-hook))
-                   (org-gcal-test--update-entry-hook-called nil))
-                (org-gcal-tmp-dbgmsg "About to call org-gcal-post-at-point-aio")
-                (org-gcal-tmp-dbgmsg "org-gcal-after-update-entry-functions: %S"
-                                     org-gcal-after-update-entry-functions)
-                (org-gcal-tmp-dbgmsg "org-gcal-api-url: %S" org-gcal-api-url)
-                (aio-await (org-gcal-post-at-point-aio-promise))
-                (org-gcal-tmp-dbgmsg "org-back-to-heading")
-                (org-back-to-heading)
-                ;; Disable this for now - the hook seems not to be always called, and
-                ;; I’m not sure why.
-                (should (equal update-entry-hook-called t))
-                (let ((elem (org-element-at-point)))
-                  (should (equal (org-gcal-test--title-to-string elem)
-                                 "My event summary"))
-                  (should (equal (org-element-property :ETAG elem)
-                                 "\"12344321\""))
-                  (should (equal (org-element-property :LOCATION elem)
-                                 "Foobar's desk"))
-                  (should (equal (org-element-property :LINK elem)
-                                 "[[https://google.com][Google]]"))
-                  (should (equal (org-element-property :TRANSPARENCY elem)
-                                 "opaque"))
-                  (should (equal (org-element-property :CALENDAR-ID elem)
-                                 "foo@foobar.com"))
-                  (should (equal (org-element-property :ENTRY-ID elem)
-                                 "foobar1234/foo@foobar.com")))
-                ;; Check contents of "org-gcal" drawer
-                (re-search-forward ":org-gcal:")
-                (let ((elem (org-element-at-point)))
-                  (should (equal (org-element-property :drawer-name elem)
-                                 "org-gcal"))
-                  (should (equal (buffer-substring-no-properties
-                                  (org-element-property :contents-begin elem)
-                                  (org-element-property :contents-end elem))
-                                 "\
+            (stub org-gcal--time-zone => '(0 "UTC"))
+            (stub org-generic-id-add-location => nil)
+            (stub org-gcal--get-access-token => "my_access_token")
+            (stub org-gcal--refresh-token-aio => (aio-iter2-lambda () "test_access_token"))
+            (stub org-gcal--ensure-token-aio => (aio-iter2-lambda () nil))
+            (org-gcal-test--dynamic-let
+             ((org-gcal-api-url (format "http://localhost:%d" port))
+              (org-gcal-managed-post-at-point-update-existing 'always-push)
+              (org-gcal-after-update-entry-functions '(org-gcal-test--update-entry-hook))
+              (org-gcal-test--update-entry-hook-called nil))
+             (org-gcal-tmp-dbgmsg "About to call org-gcal-post-at-point-aio")
+             (org-gcal-tmp-dbgmsg "org-gcal-after-update-entry-functions: %S"
+                                  org-gcal-after-update-entry-functions)
+             (org-gcal-tmp-dbgmsg "org-gcal-api-url: %S" org-gcal-api-url)
+             (aio-await (org-gcal-post-at-point-aio-promise))
+             (org-gcal-tmp-dbgmsg "org-back-to-heading")
+             (org-back-to-heading)
+            ;; Disable this for now - the hook seems not to be always called, and
+            ;; I’m not sure why.
+             (should (equal update-entry-hook-called t))
+             (let ((elem (org-element-at-point)))
+               (should (equal (org-gcal-test--title-to-string elem)
+                              "My event summary"))
+               (should (equal (org-element-property :ETAG elem)
+                              "\"12344321\""))
+               (should (equal (org-element-property :LOCATION elem)
+                              "Foobar's desk"))
+               (should (equal (org-element-property :LINK elem)
+                              "[[https://google.com][Google]]"))
+               (should (equal (org-element-property :TRANSPARENCY elem)
+                              "opaque"))
+               (should (equal (org-element-property :CALENDAR-ID elem)
+                              "foo@foobar.com"))
+               (should (equal (org-element-property :ENTRY-ID elem)
+                              "foobar1234/foo@foobar.com")))
+            ;; Check contents of "org-gcal" drawer
+             (re-search-forward ":org-gcal:")
+             (let ((elem (org-element-at-point)))
+               (should (equal (org-element-property :drawer-name elem)
+                              "org-gcal"))
+               (should (equal (buffer-substring-no-properties
+                               (org-element-property :contents-begin elem)
+                               (org-element-property :contents-end elem))
+                              "\
 <2019-10-06 Sun 17:00-21:00>
 
 My event description
@@ -949,7 +951,8 @@ Second paragraph
     (org-gcal-test--with-mock-aio
       (stub org-gcal--time-zone => '(0 "UTC"))
       (stub org-generic-id-add-location => nil)
-      (stub org-gcal-request-token-aio-promise => (aio-iter2-lambda () nil))
+      (stub org-gcal--get-access-token => "my_access_token")
+      (stub org-gcal--refresh-token-aio => (aio-iter2-lambda () "test_access_token"))
       (mock (org-gcal--post-event-aio "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
                                       "My event summary" "Foobar's desk"
                                       '((url . "https://google.com") (title . "Google"))
@@ -1027,7 +1030,8 @@ Second paragraph
     (org-gcal-test--with-mock-aio
       (stub org-gcal--time-zone => '(0 "UTC"))
       (stub org-generic-id-add-location => nil)
-      (stub org-gcal-request-token-aio-promise => (aio-lambda () nil))
+      (stub org-gcal--get-access-token => "my_access_token")
+      (stub org-gcal--refresh-token-aio => (aio-iter2-lambda () "test_access_token"))
       (mock
        (org-gcal--post-event-aio "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
                              "My event summary" "Foobar's desk"
@@ -1103,7 +1107,8 @@ Second paragraph
     (org-gcal-test--with-mock-aio
       (stub org-gcal--time-zone => '(0 "UTC"))
       (stub org-generic-id-add-location => nil)
-      (stub org-gcal-request-token-aio-promise => (aio-iter2-lambda () nil))
+      (stub org-gcal--get-access-token => "my_access_token")
+      (stub org-gcal--refresh-token-aio => (aio-iter2-lambda () "test_access_token"))
       (mock (org-gcal--post-event-aio "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
                                   "My event summary" "Foobar's desk"
                                   nil
