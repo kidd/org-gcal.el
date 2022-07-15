@@ -905,49 +905,49 @@ further processing."
        "Received HTTP 401"
        "OAuth token expired. Now trying to refresh-token")
       (aio-await (org-gcal--refresh-token-aio calendar-id))
-      (aio-await (funcall retry-fn))
-      ((eq 403 status-code)
-       (org-gcal--notify "Received HTTP 403"
-                         "Ensure you enabled the Calendar API through the Developers Console, then try again.")
-       (error "Got error %S: %S" status-code error-thrown))
-      ((eq 410 status-code)
-       (org-gcal--notify "Received HTTP 410"
-                         "Calendar API sync token expired - performing full sync.")
-       (setf (org-gcal--sync-tokens-get calendar-id 'remove) nil)
-       (aio-await (funcall retry-fn)))
-      ;; We got some 2xx response, but for some reason no
-      ;; message body.
-      ((and (> 299 status-code) (eq data nil))
-       (org-gcal--notify
-        (concat "Received HTTP" (number-to-string status-code))
-        "Error occured, but no message body.")
-       (error "Got error %S: %S" status-code error-thrown))
-      ((not (eq error-thrown nil))
-       ;; Generic error-handler meant to provide useful
-       ;; information about failure cases not otherwise
-       ;; explicitly specified.
-       (org-gcal--notify
-        (concat "Status code: " (number-to-string status-code))
-        (pp-to-string error-thrown))
-       (error "Got error %S: %S" status-code error-thrown))
-      ;; Fetch was successful. Return the list of events retrieved for
-      ;; further processing.
-      (t
-       (nconc page-token-cons (list (plist-get data :nextPageToken)))
-       (let ((next-sync-token (plist-get data :nextSyncToken)))
-         (when next-sync-token
-           (setf (org-gcal--sync-tokens-get calendar-id)
-                 (list
-                  ;; The first element is the expiration time of
-                  ;; the sync token. Note that, if the expiration
-                  ;; time already exists, we don't update it. We
-                  ;; want to expire the token according to the
-                  ;; time of the previous full sync.
-                  (or
-                   (car (org-gcal--sync-tokens-get calendar-id))
-                   down-time)
-                  next-sync-token))))
-       (org-gcal--filter (plist-get data :items)))))))
+      (aio-await (funcall retry-fn)))
+     ((eq 403 status-code)
+      (org-gcal--notify "Received HTTP 403"
+                        "Ensure you enabled the Calendar API through the Developers Console, then try again.")
+      (error "Got error %S: %S" status-code error-thrown))
+     ((eq 410 status-code)
+      (org-gcal--notify "Received HTTP 410"
+                        "Calendar API sync token expired - performing full sync.")
+      (setf (org-gcal--sync-tokens-get calendar-id 'remove) nil)
+      (aio-await (funcall retry-fn)))
+     ;; We got some 2xx response, but for some reason no
+     ;; message body.
+     ((and (> 299 status-code) (eq data nil))
+      (org-gcal--notify
+       (concat "Received HTTP" (number-to-string status-code))
+       "Error occured, but no message body.")
+      (error "Got error %S: %S" status-code error-thrown))
+     ((not (eq error-thrown nil))
+      ;; Generic error-handler meant to provide useful
+      ;; information about failure cases not otherwise
+      ;; explicitly specified.
+      (org-gcal--notify
+       (concat "Status code: " (number-to-string status-code))
+       (pp-to-string error-thrown))
+      (error "Got error %S: %S" status-code error-thrown))
+     ;; Fetch was successful. Return the list of events retrieved for
+     ;; further processing.
+     (t
+      (nconc page-token-cons (list (plist-get data :nextPageToken)))
+      (let ((next-sync-token (plist-get data :nextSyncToken)))
+        (when next-sync-token
+          (setf (org-gcal--sync-tokens-get calendar-id)
+                (list
+                 ;; The first element is the expiration time of
+                 ;; the sync token. Note that, if the expiration
+                 ;; time already exists, we don't update it. We
+                 ;; want to expire the token according to the
+                 ;; time of the previous full sync.
+                 (or
+                  (car (org-gcal--sync-tokens-get calendar-id))
+                  down-time)
+                 next-sync-token))))
+      (org-gcal--filter (plist-get data :items))))))
 
 (defun org-gcal--sync-handle-events
     (calendar-id calendar-file events recurring-instances? up-time down-time
