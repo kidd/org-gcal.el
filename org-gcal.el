@@ -1788,6 +1788,7 @@ AIO version: ‘org-gcal-post-at-point-aio'."
         (goto-char (marker-position m))))
     (end-of-line)
     (org-gcal--back-to-heading)
+    (move-beginning-of-line nil)
     (let* ((skip-import skip-import)
            (skip-export skip-export)
            (marker (point-marker))
@@ -1896,19 +1897,23 @@ For valid values of EXISTING-MODE see
 Returns a promise to wait for completion."
   (interactive)
   (let ((marker (point-marker)))
-    (org-gcal--aio-wait-for-background-interactive
-     (aio-iter2-with-async
+    (progn
+      (message "Entering: org-gcal-post-at-point-aio; marker: %S" marker)
+     (progn
       (aio-await (org-gcal--ensure-token-aio))
       (org-with-point-at marker
         ;; Post entry at point in org-agenda buffer.
         (message "marker %S" marker)
         (message "buffer\n\n%s" (buffer-string))
+        (message "org-gcal-managed-post-at-point-update-existing: %S"
+                 org-gcal-managed-post-at-point-update-existing)
         (when (eq major-mode 'org-agenda-mode)
               (let ((m (org-get-at-bol 'org-hd-marker)))
                 (set-buffer (marker-buffer m))
                 (goto-char (marker-position m))))
         (end-of-line)
         (org-gcal--back-to-heading)
+        (move-beginning-of-line nil)
         (setf marker (point-marker))
         (let* ((skip-import skip-import)
                (skip-export skip-export)
@@ -2377,6 +2382,7 @@ If UPDATE-MODE is passed, then the functions in
 ‘org-gcal-after-update-entry-functions' are called in order with the same
 arguments as passed to this function and the point moved to the beginning of the
 heading."
+  (message "org-gcal--update-entry enter")
   (unless (org-at-heading-p)
     (user-error "Must be on Org-mode heading."))
   (let* ((smry  (plist-get event :summary))
@@ -2512,6 +2518,8 @@ heading."
       (save-excursion
         (org-back-to-heading t)
         (org-gcal--handle-cancelled-entry)))
+    (message "update-mode %S org-gcal-after-update-entry-functions %S"
+             update-mode org-gcal-after-update-entry-functions)
     (when update-mode
       (cl-dolist (f org-gcal-after-update-entry-functions)
         (save-excursion
@@ -2835,6 +2843,7 @@ overwrite the event at MARKER if the event has changed on the server. MARKER is
 destroyed by this function.
 
 Returns a ‘aio-promise’ object that can be used to wait for completion."
+  (message "org-gcal--post-event-aio entered")
   (let*
       ((stime (org-gcal--param-date start))
        (etime (org-gcal--param-date end))
@@ -2842,50 +2851,53 @@ Returns a ‘aio-promise’ object that can be used to wait for completion."
        (etime-alt (org-gcal--param-date-alt end))
        (a-token (or a-token (org-gcal--get-access-token calendar-id)))
        (response
-        (aio-await (apply
-                    #'org-gcal--aio-request
-                    (concat
-                     (org-gcal-events-url calendar-id)
-                     (when event-id
-                       (concat "/" (url-hexify-string event-id))))
-                    :type (cond
-                           (skip-export "GET")
-                           (event-id "PATCH")
-                           (t "POST"))
-                    :headers (append
-                              `(("Content-Type" . "application/json")
-                                ("Accept" . "application/json")
-                                ("Authorization" . ,(format "Bearer %s" a-token)))
-                              (cond
-                               ((null etag) nil)
-                               ((null event-id)
-                                (error "org-gcal--post-event-aio: %s %s %s: %s"
-                                       (point-marker) calendar-id event-id
-                                       "Event cannot have ETag set when event ID absent"))
-                               (t
-                                `(("If-Match" . ,etag)))))
-                    :parser 'org-gcal--json-read
-                    (unless skip-export
-                      (list
-                       :data (encode-coding-string
-                              (json-encode
-                               (append
-                                `(("summary" . ,smry)
-                                  ("location" . ,loc)
-                                  ("source" . ,source)
-                                  ("transparency" . ,transparency)
-                                  ("description" . ,desc))
-                                (if (and start end)
-                                    `(("start" (,stime . ,start) (,stime-alt . nil))
-                                      ("end" (,etime . ,(if (equal "date" etime)
-                                                            (org-gcal--iso-next-day end)
-                                                          end))
-                                       (,etime-alt . nil)))
-                                  nil)))
-                              'utf-8))))))
+        (condition-case err
+            (aio-await (apply
+                        #'org-gcal--aio-request
+                        (concat
+                         (org-gcal-events-url calendar-id)
+                         (when event-id
+                           (concat "/" (url-hexify-string event-id))))
+                        :type (cond
+                               (skip-export "GET")
+                               (event-id "PATCH")
+                               (t "POST"))
+                        :headers (append
+                                  `(("Content-Type" . "application/json")
+                                    ("Accept" . "application/json")
+                                    ("Authorization" . ,(format "Bearer %s" a-token)))
+                                  (cond
+                                   ((null etag) nil)
+                                   ((null event-id)
+                                    (error "org-gcal--post-event-aio: %s %s %s: %s"
+                                           (point-marker) calendar-id event-id
+                                           "Event cannot have ETag set when event ID absent"))
+                                   (t
+                                    `(("If-Match" . ,etag)))))
+                        :parser 'org-gcal--json-read
+                        (unless skip-export
+                          (list
+                           :data (encode-coding-string
+                                  (json-encode
+                                   (append
+                                    `(("summary" . ,smry)
+                                      ("location" . ,loc)
+                                      ("source" . ,source)
+                                      ("transparency" . ,transparency)
+                                      ("description" . ,desc))
+                                    (if (and start end)
+                                        `(("start" (,stime . ,start) (,stime-alt . nil))
+                                          ("end" (,etime . ,(if (equal "date" etime)
+                                                                (org-gcal--iso-next-day end)
+                                                              end))
+                                           (,etime-alt . nil)))
+                                      nil)))
+                                  'utf-8)))))
+          (aio-request (cdr err))))
        (_temp (request-response-data response))
        (status-code (request-response-status-code response))
        (error-msg (request-response-error-thrown response)))
+    (message "org-gcal--post-event-aio: response: %S" response)
     (cond
      ;; If there is no network connectivity, the response will not
      ;; include a status code.
