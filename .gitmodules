@@ -1,0 +1,3 @@
+[submodule "emacs-aio-iter2"]
+	path = emacs-aio-iter2
+	url = https://github.com/skeeto/emacs-aio.git
