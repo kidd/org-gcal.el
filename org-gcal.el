@@ -401,7 +401,8 @@ AIO version: ‘org-gcal-sync-aio'."
       (lambda ()
         (org-gcal--sync-unlock)))))
 
-(aio-iter2-defun org-gcal-sync-aio (&optional skip-export silent)
+;;;###autoload
+(defun org-gcal-sync-aio (&optional skip-export silent)
   "Import events from calendars.
 Export the ones to the calendar if unless
 SKIP-EXPORT.  Set SILENT to non-nil to inhibit notifications."
@@ -1203,11 +1204,12 @@ AIO version: ‘org-gcal-fetch-aio’."
   (interactive)
   (org-gcal-sync t))
 
-(aio-iter2-defun org-gcal-fetch-aio ()
+;;;###autoload
+(defun org-gcal-fetch-aio ()
   "Fetch event data from google calendar."
   (interactive)
   (org-gcal--aio-wait-for-background-interactive
-   (aio-with-async
+   (aio-iter2-with-async
      (org-gcal-sync-aio t))))
 
 ;;;###autoload
@@ -1246,7 +1248,8 @@ AIO version: see ‘org-gcal-sync-buffer-aio'."
         (org-generic-id-update-id-locations org-gcal-entry-id-property)
         (org-gcal--sync-unlock)))))
 
-(aio-iter2-defun org-gcal-sync-buffer-aio
+;;;###autoload
+(defun org-gcal-sync-buffer-aio
   (&optional skip-export silent filter-date filter-managed)
   "Sync entries with Calendar events in currently-visible portion of buffer.
 
@@ -1500,14 +1503,15 @@ AIO version: ‘org-gcal-fetch-buffer-aio’."
   (interactive)
   (org-gcal-sync-buffer t silent filter-date))
 
-(aio-iter2-defun org-gcal-fetch-buffer-aio (&optional silent filter-date)
+;;;###autoload
+(defun org-gcal-fetch-buffer-aio (&optional silent filter-date)
   "Fetch changes to events in the currently-visible portion of the buffer
 
 Unlike ‘org-gcal-sync-buffer’, this will not push any changes to Google
 Calendar. For SILENT and FILTER-DATE see ‘org-gcal-sync-buffer’."
   (interactive)
   (org-gcal--aio-wait-for-background-interactive
-   (aio-with-async
+   (aio-iter2-with-async
     (aio-await (org-gcal-sync-buffer-aio t silent filter-date)))))
 
 
@@ -1885,7 +1889,8 @@ AIO version: ‘org-gcal-post-at-point-aio'."
         (org-gcal--post-event start end smry loc source desc calendar-id marker transparency etag
                               event-id nil skip-import skip-export)))))
 
-(aio-iter2-defun org-gcal-post-at-point-aio (&optional skip-import skip-export existing-mode)
+;;;###autoload
+(defun org-gcal-post-at-point-aio (&optional skip-import skip-export existing-mode)
   "Post entry at point to current calendar.
 
 This overwrites the event on the server with the data from the entry, except if
@@ -1899,121 +1904,123 @@ For valid values of EXISTING-MODE see
 
 Returns a promise to wait for completion."
   (interactive)
-  (let ((marker (point-marker)))
-    (progn
-      (message "Entering: org-gcal-post-at-point-aio; marker: %S" marker)
-     (progn
-      (aio-await (org-gcal--ensure-token-aio))
-      (org-with-point-at marker
-        ;; Post entry at point in org-agenda buffer.
-        (message "marker %S" marker)
-        (message "buffer\n\n%s" (buffer-string))
-        (message "org-gcal-managed-post-at-point-update-existing: %S"
-                 org-gcal-managed-post-at-point-update-existing)
-        (when (eq major-mode 'org-agenda-mode)
-              (let ((m (org-get-at-bol 'org-hd-marker)))
-                (set-buffer (marker-buffer m))
-                (goto-char (marker-position m))))
-        (end-of-line)
-        (org-gcal--back-to-heading)
-        (move-beginning-of-line nil)
-        (setf marker (point-marker))
-        (let* ((skip-import skip-import)
-               (skip-export skip-export)
-               (elem (org-element-headline-parser (point-max) t))
-               (smry (org-gcal--headline))
-               (loc (org-entry-get (point) "LOCATION"))
-               (source
-                (when-let ((link-string
-                            (or (org-entry-get (point) "link")
-                                (nth 0
-                                     (org-entry-get-multivalued-property
-                                      (point) "ROAM_REFS")))))
-                  (org-gcal--source-from-link-string link-string)))
-               (transparency (or (org-entry-get (point) "TRANSPARENCY")
-                                 org-gcal-default-transparency))
-               (recurrence (org-entry-get (point) "recurrence"))
-               (event-id (org-gcal--get-id (point)))
-               (etag (org-entry-get (point) org-gcal-etag-property))
-               (managed (org-entry-get (point) org-gcal-managed-property))
-               (calendar-id
-                (org-entry-get (point) org-gcal-calendar-id-property)))
-          ;; Set ‘org-gcal-managed-property’ if not present.
-          (unless (and managed (member managed '("org" "gcal")))
-            (let ((x
-                   (if (and calendar-id event-id)
-                       org-gcal-managed-update-existing-mode
-                     org-gcal-managed-create-from-entry-mode)))
-              (org-entry-put (point) org-gcal-managed-property x)
-              (setq managed x)))
-          ;; Fill in Calendar ID if not already present.
-          (unless calendar-id
-            (setq calendar-id
-                  ;; Completes read with prompts like "CALENDAR-FILE (CALENDAR-ID)",
-                  ;; and then uses ‘replace-regexp-in-string’ to extract just
-                  ;; CALENDAR-ID.
-                  (replace-regexp-in-string
-                   ".*(\\(.*?\\))$" "\\1"
-                   (completing-read "Calendar ID: "
-                                    (mapcar
-                                     (lambda (x) (format "%s (%s)" (cdr x) (car x)))
-                                     org-gcal-fetch-file-alist))))
-            (org-entry-put (point) org-gcal-calendar-id-property calendar-id))
-          (when (equal managed "gcal")
-            (unless existing-mode
-              (setq existing-mode org-gcal-managed-post-at-point-update-existing))
-            (pcase existing-mode
-              ('never-push
-               (setq skip-export t))
-              ;; PROMPT and PROMPT-SYNC are handled identically here. When syncing
-              ;; PROMPT is mapped to NEVER-PUSH in the calling function, while
-              ;; PROMPT-SYNC is left unchanged.
-              ;; Only when manually running ‘org-gcal-post-at-point’ should PROMPT
-              ;; be seen here.
-              ((or 'prompt 'prompt-sync)
-               (unless (y-or-n-p (format "Push event to Google Calendar?\n\n%s\n\n"
-                                         smry))
-                 (setq skip-export t)))
-              ('always-push nil)
-              (val
-               (user-error "Bad value %S of EXISTING-MODE passed to ‘org-gcal-post-at-point’. For valid values see ‘org-gcal-managed-post-at-point-update-existing’."
-                           val))))
-          ;; Read currently-present start and end times and description. Fill in a
-          ;; reasonable start and end time if either is missing.
-          (let* ((time-desc (org-gcal--get-time-and-desc))
-                 (start (plist-get time-desc :start))
-                 (end (plist-get time-desc :end))
-                 (desc (plist-get time-desc :desc)))
-            (unless end
-              (let* ((start-time (or start (org-read-date 'with-time 'to-time)))
-                     (min-duration 5)
-                     (resolution 5)
-                     (duration-default
-                      (org-duration-from-minutes
-                       (max
-                        min-duration
-                        ;; Round up to the nearest multiple of ‘resolution’ minutes.
-                        (* resolution
-                           (ceiling
-                            (/ (- (org-duration-to-minutes
-                                   (or (org-element-property :EFFORT elem) "0:00"))
-                                  (org-clock-sum-current-item))
-                               resolution))))))
-                     (duration (read-from-minibuffer "Duration: " duration-default))
-                     (duration-minutes (org-duration-to-minutes duration))
-                     (duration-seconds (* 60 duration-minutes))
-                     (end-time (time-add start-time duration-seconds)))
-                (setq start (org-gcal--format-time2iso start-time)
-                      end (org-gcal--format-time2iso end-time))))
-            (when recurrence
-              (setq start nil end nil))
-            (message "About to call org-gcal--post-event-aio")
-            (aio-await
-             (org-gcal--post-event-aio
-              start end smry loc source desc
-              calendar-id marker transparency etag event-id
-              nil skip-import skip-export)))))
-      nil))))
+  (org-gcal--aio-wait-for-background-interactive
+   (aio-iter2-with-async
+     (let ((marker (point-marker)))
+       (progn
+         (message "Entering: org-gcal-post-at-point-aio; marker: %S" marker)
+         (progn
+           (aio-await (org-gcal--ensure-token-aio))
+           (org-with-point-at marker
+             ;; Post entry at point in org-agenda buffer.
+            (message "marker %S" marker)
+            (message "buffer\n\n%s" (buffer-string))
+            (message "org-gcal-managed-post-at-point-update-existing: %S"
+                org-gcal-managed-post-at-point-update-existing)
+            (when (eq major-mode 'org-agenda-mode)
+             (let ((m (org-get-at-bol 'org-hd-marker)))
+              (set-buffer (marker-buffer m))
+              (goto-char (marker-position m))))
+            (end-of-line)
+            (org-gcal--back-to-heading)
+            (move-beginning-of-line nil)
+            (setf marker (point-marker))
+            (let* ((skip-import skip-import)
+                   (skip-export skip-export)
+                   (elem (org-element-headline-parser (point-max) t))
+                   (smry (org-gcal--headline))
+                   (loc (org-entry-get (point) "LOCATION"))
+                   (source
+                    (when-let ((link-string
+                                (or (org-entry-get (point) "link")
+                                 (nth 0
+                                  (org-entry-get-multivalued-property
+                                   (point) "ROAM_REFS")))))
+                     (org-gcal--source-from-link-string link-string)))
+                   (transparency (or (org-entry-get (point) "TRANSPARENCY")
+                                  org-gcal-default-transparency))
+                   (recurrence (org-entry-get (point) "recurrence"))
+                   (event-id (org-gcal--get-id (point)))
+                   (etag (org-entry-get (point) org-gcal-etag-property))
+                   (managed (org-entry-get (point) org-gcal-managed-property))
+                   (calendar-id
+                    (org-entry-get (point) org-gcal-calendar-id-property)))
+         ;; Set ‘org-gcal-managed-property’ if not present.
+             (unless (and managed (member managed '("org" "gcal")))
+              (let ((x
+                        (if (and calendar-id event-id)
+                            org-gcal-managed-update-existing-mode
+                         org-gcal-managed-create-from-entry-mode)))
+                   (org-entry-put (point) org-gcal-managed-property x)
+                   (setq managed x)))
+               ;; Fill in Calendar ID if not already present.
+             (unless calendar-id
+              (setq calendar-id
+         ;; Completes read with prompts like "CALENDAR-FILE (CALENDAR-ID)",
+         ;; and then uses ‘replace-regexp-in-string’ to extract just
+         ;; CALENDAR-ID.
+                       (replace-regexp-in-string
+                        ".*(\\(.*?\\))$" "\\1"
+                        (completing-read "Calendar ID: "
+                         (mapcar
+                          (lambda (x) (format "%s (%s)" (cdr x) (car x)))
+                          org-gcal-fetch-file-alist))))
+              (org-entry-put (point) org-gcal-calendar-id-property calendar-id))
+             (when (equal managed "gcal")
+              (unless existing-mode
+                   (setq existing-mode org-gcal-managed-post-at-point-update-existing))
+              (pcase existing-mode
+                   ('never-push
+                    (setq skip-export t))
+                   ;; PROMPT and PROMPT-SYNC are handled identically here. When syncing
+                   ;; PROMPT is mapped to NEVER-PUSH in the calling function, while
+                   ;; PROMPT-SYNC is left unchanged.
+                   ;; Only when manually running ‘org-gcal-post-at-point’ should PROMPT
+                   ;; be seen here.
+                   ((or 'prompt 'prompt-sync)
+                    (unless (y-or-n-p (format "Push event to Google Calendar?\n\n%s\n\n"
+                                       smry))
+                     (setq skip-export t)))
+                   ('always-push nil)
+                   (val
+                    (user-error "Bad value %S of EXISTING-MODE passed to ‘org-gcal-post-at-point’. For valid values see ‘org-gcal-managed-post-at-point-update-existing’."
+                     val))))
+               ;; Read currently-present start and end times and description. Fill in a
+               ;; reasonable start and end time if either is missing.
+             (let* ((time-desc (org-gcal--get-time-and-desc))
+                    (start (plist-get time-desc :start))
+                    (end (plist-get time-desc :end))
+                    (desc (plist-get time-desc :desc)))
+              (unless end
+                   (let* ((start-time (or start (org-read-date 'with-time 'to-time)))
+                          (min-duration 5)
+                          (resolution 5)
+                          (duration-default
+                           (org-duration-from-minutes
+                            (max
+                             min-duration
+                             ;; Round up to the nearest multiple of ‘resolution’ minutes.
+                             (* resolution
+                              (ceiling
+                               (/ (- (org-duration-to-minutes
+                                      (or (org-element-property :EFFORT elem) "0:00"))
+                                   (org-clock-sum-current-item))
+                                resolution))))))
+                          (duration (read-from-minibuffer "Duration: " duration-default))
+                          (duration-minutes (org-duration-to-minutes duration))
+                          (duration-seconds (* 60 duration-minutes))
+                          (end-time (time-add start-time duration-seconds)))
+                    (setq start (org-gcal--format-time2iso start-time)
+                     end (org-gcal--format-time2iso end-time))))
+              (when recurrence
+                   (setq start nil end nil))
+              (message "About to call org-gcal--post-event-aio")
+              (aio-await
+                  (org-gcal--post-event-aio
+                   start end smry loc source desc
+                   calendar-id marker transparency etag event-id
+                   nil skip-import skip-export)))))
+           nil))))))
 
 ;;;###autoload
 (defun org-gcal-delete-at-point (&optional clear-gcal-info)
@@ -2081,7 +2088,8 @@ delete calendar info from events on calendars you no longer have access to."
   (aio-wait-for
    (oauth2-auto-access-token calendar-id 'org-gcal)))
 
-(aio-iter2-defun org-gcal-delete-at-point-aio (&optional clear-gcal-info)
+;;;###autoload
+(defun org-gcal-delete-at-point-aio (&optional clear-gcal-info)
   "Delete entry at point to current calendar.
 
 If called with prefix or with CLEAR-GCAL-INFO non-nil, will clear calendar info
