@@ -28,7 +28,21 @@ compile: $(SRC) elpa
 	$(CASK) build 2>&1 | tee $(BUILD_LOG); \
 	! ( grep -E -e ':(Warning|Error):' $(BUILD_LOG) )
 
-test: $(SRC) $(TEST) $(TEST_DEPS) $(TEST_HELPER) elpa
+test: test-checkdoc test-unit
+
+test-checkdoc: $(SRC) elpa compile
+	FILES="$(SRC)" $(CASK) eval '\
+	(let* ((files (split-string (getenv "FILES") " "))) \
+	  (dolist (file files) \
+	    (let ((pkg (intern-soft (file-name-base file)))) \
+	      (require pkg) \
+	      (checkdoc-file file))) \
+	  (when (get-buffer "*Warnings*") \
+	    (kill-emacs 1)))'
+	# (get-buffer "*Warnings") checks if any warnings were generated.
+
+
+test-unit: $(SRC) $(TEST) $(TEST_DEPS) $(TEST_HELPER) elpa
 	# Collect output for running all tests at once. Use </dev/null to
 	# ensure any input from user fails.
 	test_pattern () { \
