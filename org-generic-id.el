@@ -3,6 +3,9 @@
 ;; Author: Robert Irelan <rirelan at gmail dot com>
 ;; Homepage: https://orgmode.org
 ;;
+;; Keep in sync with org-gcal-pkg.el.
+;; Package-Requires: ((org "9.3"))
+;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
 ;;; Commentary:

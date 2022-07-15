@@ -5,6 +5,8 @@
 ;; Author: Robert Irelan <rirelan@gmail.com>, Christopher Wellons <wellons@nullprogram.com>
 ;; URL: https://github.com/telotortium/emacs-aio-iter2.el
 ;; Version: 1.0
+;;
+;; Keep in sync with org-gcal-pkg.el.
 ;; Package-Requires: ((emacs "26.1") (aio "1.0") (iter2 "1.0"))
 
 ;;; Commentary:
