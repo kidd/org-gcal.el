@@ -3191,9 +3191,9 @@ The promise on success will resolve to a ‘request-response’ object, from whi
 all parts of the response can be read. On failure, a signal will be thrown with
 AIO-REQUEST as the error symbol and the ‘request-response’ object as the data.
 
-The meaning of URL and the other SETTINGS are the same as for ‘request’, except that
-the :success, :error, :complete, and :status-code arguments cannot be used, since these
-keys are used by this function to set up the promise resolution."
+The meaning of URL and the other SETTINGS are the same as for ‘request’, except
+that the :success, :error, :complete, and :status-code arguments cannot be used,
+since these keys are used by this function to set up the promise resolution."
   (let ((promise (aio-promise))
         resp)
     (prog1 promise
@@ -3236,175 +3236,186 @@ keys are used by this function to set up the promise resolution."
                             (lambda ()
                               (signal (car error) (cdr error)))))))))
 
-(aio-defun org-gcal--post-event-aio (start end smry loc desc calendar-id marker &optional etag event-id a-token skip-import skip-export)
-  "\
-Creates or updates an event on Calendar CALENDAR-ID with attributes START, END,
-SMRY, LOC, DESC. The Org buffer and point from which the event is read is given
-by MARKER.
+;; FIXME: this might be the right one, not sure.
+;(aio-defun org-gcal--post-event-aio (start end smry loc desc calendar-id marker &optional etag event-id a-token skip-import skip-export)
+;  "\
+;Creates or updates an event on Calendar CALENDAR-ID with attributes START, END,
+;SMRY, LOC, DESC. The Org buffer and point from which the event is read is given
+;by MARKER.
+;
+;If ETAG is provided, it is used to retrieve the event data from the server and
+;overwrite the event at MARKER if the event has changed on the server. MARKER is
+;destroyed by this function.
+;
+;Returns a ‘aio-promise’ object that can be used to wait for completion."
+;  (let ((stime (org-gcal--param-date start))
+;        (etime (org-gcal--param-date end))
+;        (stime-alt (org-gcal--param-date-alt start))
+;        (etime-alt (org-gcal--param-date-alt end))
+;        (a-token (or a-token (org-gcal--get-access-token calendar-id))))
+;    (let* ((response
+;            (aio-await (apply
+;                        #'org-gcal--aio-request
+;                        (concat
+;                         (org-gcal-events-url calendar-id)
+;                         (when event-id
+;                           (concat "/" event-id)))
+;                        :type (cond
+;                               (skip-export "GET")
+;                               (event-id "PATCH")
+;                               (t "POST"))
+;                        :headers (append
+;                                  `(("Content-Type" . "application/json")
+;                                    ("Accept" . "application/json")
+;                                    ("Authorization" . ,(format "Bearer %s" a-token)))
+;                                  (cond
+;                                   ((null etag) nil)
+;                                   ((null event-id)
+;                                    (error "Event cannot have ETag set when event ID absent"))
+;                                   (t
+;                                    `(("If-Match" . ,etag)))))
+;                        :parser 'org-gcal--json-read
+;                        (unless skip-export
+;                          (list
+;                           :data (encode-coding-string
+;                                  (json-encode
+;                                   (append
+;                                    `(("summary" . ,smry)
+;                                      ("location" . ,loc)
+;                                      ("description" . ,desc))
+;                                    (if (and start end)
+;                                        `(("start" (,stime . ,start) (,stime-alt . nil))
+;                                          ("end" (,etime . ,(if (equal "date" etime)
+;                                                                (org-gcal--iso-next-day end)
+;                                                              end))
+;                                           (,etime-alt . nil)))
+;                                      nil)))
+;                                  'utf-8)))))))
+;     (message "%s" (pp-to-string (request-response-data response))))))
+;    ;; (deferred:try
+;    ;;   (deferred:$
+;    ;;     (apply
+;    ;;      #'request-deferred
+;    ;;      (concat
+;    ;;       (org-gcal-events-url calendar-id)
+;    ;;       (when event-id
+;    ;;         (concat "/" event-id)))
+;    ;;      :type (cond
+;    ;;             (skip-export "GET")
+;    ;;             (event-id "PATCH")
+;    ;;             (t "POST"))
+;    ;;      :headers (append
+;    ;;                `(("Content-Type" . "application/json")
+;    ;;                  ("Accept" . "application/json")
+;    ;;                  ("Authorization" . ,(format "Bearer %s" a-token)))
+;    ;;                (cond
+;    ;;                 ((null etag) nil)
+;    ;;                 ((null event-id)
+;    ;;                  (error "Event cannot have ETag set when event ID absent"))
+;    ;;                 (t
+;    ;;                  `(("If-Match" . ,etag)))))
+;    ;;      :parser 'org-gcal--json-read
+;    ;;      (unless skip-export
+;    ;;        (list
+;    ;;         :data (encode-coding-string
+;    ;;                (json-encode
+;    ;;                 (append
+;    ;;                  `(("summary" . ,smry)
+;    ;;                    ("location" . ,loc)
+;    ;;                    ("description" . ,desc))
+;    ;;                  (if (and start end)
+;    ;;                      `(("start" (,stime . ,start) (,stime-alt . nil))
+;    ;;                        ("end" (,etime . ,(if (equal "date" etime)
+;    ;;                                              (org-gcal--iso-next-day end)
+;    ;;                                            end))
+;    ;;                         (,etime-alt . nil)))
+;    ;;                    nil)))
+;    ;;                'utf-8))))
+;    ;;     (deferred:nextc it
+;    ;;       (lambda (response)
+;    ;;         (let
+;    ;;             ((_temp (request-response-data response))
+;    ;;              (status-code (request-response-status-code response))
+;    ;;              (error-msg (request-response-error-thrown response)))
+;    ;;           (cond
+;    ;;            ;; If there is no network connectivity, the response will not
+;    ;;            ;; include a status code.
+;    ;;            ((eq status-code nil)
+;    ;;             (org-gcal--notify
+;    ;;              "Got Error"
+;    ;;              "Could not contact remote service. Please check your network connectivity.")
+;    ;;             (error "Network connectivity issue"))
+;    ;;            ((eq 401 (or (plist-get (plist-get (request-response-data response) :error) :code)
+;    ;;                         status-code))
+;    ;;             (org-gcal--notify
+;    ;;              "Received HTTP 401"
+;    ;;              "OAuth token expired. Now trying to refresh-token")
+;    ;;             (deferred:$
+;    ;;               (org-gcal--refresh-token calendar-id)
+;    ;;               (deferred:nextc it
+;    ;;                 (lambda (_unused)
+;    ;;                   (org-gcal--post-event start end smry loc desc calendar-id
+;    ;;                                         marker etag event-id nil
+;    ;;                                         skip-import skip-export)))))
+;    ;;            ;; ETag on current entry is stale. This means the event on the
+;    ;;            ;; server has been updated. In that case, update the event using
+;    ;;            ;; the data from the server.
+;    ;;            ((eq status-code 412)
+;    ;;             (unless skip-import
+;    ;;               (org-gcal--notify
+;    ;;                "Received HTTP 412"
+;    ;;                (format "ETag stale for %s\n%s\n\n%s"
+;    ;;                        smry
+;    ;;                        (org-gcal--format-entry-id calendar-id event-id)
+;    ;;                        "Will overwrite this entry with event from server."))
+;    ;;               (deferred:$
+;    ;;                 (org-gcal--get-event calendar-id event-id)
+;    ;;                 (deferred:nextc it
+;    ;;                   (lambda (response)
+;    ;;                     (save-excursion
+;    ;;                       (with-current-buffer (marker-buffer marker)
+;    ;;                         (goto-char (marker-position marker))
+;    ;;                         (org-gcal--update-entry
+;    ;;                          calendar-id
+;    ;;                          (request-response-data response)
+;    ;;                          (if event-id 'update-existing 'create-from-entry))))
+;    ;;                     (deferred:succeed nil))))))
+;    ;;            ;; Generic error-handler meant to provide useful information about
+;    ;;            ;; failure cases not otherwise explicitly specified.
+;    ;;            ((not (eq error-msg nil))
+;    ;;             (org-gcal--notify
+;    ;;              (concat "Status code: " (number-to-string status-code))
+;    ;;              (pp-to-string error-msg))
+;    ;;             (error "Got error %S: %S" status-code error-msg))
+;    ;;            ;; Fetch was successful.
+;    ;;            (t
+;    ;;             (unless skip-export
+;    ;;               (let* ((data (request-response-data response)))
+;    ;;                 (save-excursion
+;    ;;                   (with-current-buffer (marker-buffer marker)
+;    ;;                     (goto-char (marker-position marker))
+;    ;;                     ;; Update the entry to add ETag, as well as other
+;    ;;                     ;; properties if this is a newly-created event.
+;    ;;                     (org-gcal--update-entry calendar-id data
+;    ;;                                             (if event-id
+;    ;;                                                 'update-existing
+;    ;;                                               'create-from-entry))))
+;    ;;                 (org-gcal--notify "Event Posted"
+;    ;;                                   (concat "Org-gcal post event\n  " (plist-get data :summary)))))
+;    ;;             (deferred:succeed nil)))))))
+;    ;;   :finally
+;    ;;   (lambda (_)
+;    ;;     (set-marker marker nil)))))
 
-If ETAG is provided, it is used to retrieve the event data from the server and
-overwrite the event at MARKER if the event has changed on the server. MARKER is
-destroyed by this function.
+(cl-defun org-gcal--aio-request-catch-error (url &rest settings)
+  "Call ‘org-gcal--aio-request’ without signaling if HTTP response is not 200.
+Rather, extract the ‘request-response’ object from the thrown error and
+return that.
 
-Returns a ‘aio-promise’ object that can be used to wait for completion."
-  (let ((stime (org-gcal--param-date start))
-        (etime (org-gcal--param-date end))
-        (stime-alt (org-gcal--param-date-alt start))
-        (etime-alt (org-gcal--param-date-alt end))
-        (a-token (or a-token (org-gcal--get-access-token calendar-id))))
-    (let* ((response
-            (aio-await (apply
-                        #'org-gcal--aio-request
-                        (concat
-                         (org-gcal-events-url calendar-id)
-                         (when event-id
-                           (concat "/" event-id)))
-                        :type (cond
-                               (skip-export "GET")
-                               (event-id "PATCH")
-                               (t "POST"))
-                        :headers (append
-                                  `(("Content-Type" . "application/json")
-                                    ("Accept" . "application/json")
-                                    ("Authorization" . ,(format "Bearer %s" a-token)))
-                                  (cond
-                                   ((null etag) nil)
-                                   ((null event-id)
-                                    (error "Event cannot have ETag set when event ID absent"))
-                                   (t
-                                    `(("If-Match" . ,etag)))))
-                        :parser 'org-gcal--json-read
-                        (unless skip-export
-                          (list
-                           :data (encode-coding-string
-                                  (json-encode
-                                   (append
-                                    `(("summary" . ,smry)
-                                      ("location" . ,loc)
-                                      ("description" . ,desc))
-                                    (if (and start end)
-                                        `(("start" (,stime . ,start) (,stime-alt . nil))
-                                          ("end" (,etime . ,(if (equal "date" etime)
-                                                                (org-gcal--iso-next-day end)
-                                                              end))
-                                           (,etime-alt . nil)))
-                                      nil)))
-                                  'utf-8)))))))
-     (message "%s" (pp-to-string (request-response-data response))))))
-    ;; (deferred:try
-    ;;   (deferred:$
-    ;;     (apply
-    ;;      #'request-deferred
-    ;;      (concat
-    ;;       (org-gcal-events-url calendar-id)
-    ;;       (when event-id
-    ;;         (concat "/" event-id)))
-    ;;      :type (cond
-    ;;             (skip-export "GET")
-    ;;             (event-id "PATCH")
-    ;;             (t "POST"))
-    ;;      :headers (append
-    ;;                `(("Content-Type" . "application/json")
-    ;;                  ("Accept" . "application/json")
-    ;;                  ("Authorization" . ,(format "Bearer %s" a-token)))
-    ;;                (cond
-    ;;                 ((null etag) nil)
-    ;;                 ((null event-id)
-    ;;                  (error "Event cannot have ETag set when event ID absent"))
-    ;;                 (t
-    ;;                  `(("If-Match" . ,etag)))))
-    ;;      :parser 'org-gcal--json-read
-    ;;      (unless skip-export
-    ;;        (list
-    ;;         :data (encode-coding-string
-    ;;                (json-encode
-    ;;                 (append
-    ;;                  `(("summary" . ,smry)
-    ;;                    ("location" . ,loc)
-    ;;                    ("description" . ,desc))
-    ;;                  (if (and start end)
-    ;;                      `(("start" (,stime . ,start) (,stime-alt . nil))
-    ;;                        ("end" (,etime . ,(if (equal "date" etime)
-    ;;                                              (org-gcal--iso-next-day end)
-    ;;                                            end))
-    ;;                         (,etime-alt . nil)))
-    ;;                    nil)))
-    ;;                'utf-8))))
-    ;;     (deferred:nextc it
-    ;;       (lambda (response)
-    ;;         (let
-    ;;             ((_temp (request-response-data response))
-    ;;              (status-code (request-response-status-code response))
-    ;;              (error-msg (request-response-error-thrown response)))
-    ;;           (cond
-    ;;            ;; If there is no network connectivity, the response will not
-    ;;            ;; include a status code.
-    ;;            ((eq status-code nil)
-    ;;             (org-gcal--notify
-    ;;              "Got Error"
-    ;;              "Could not contact remote service. Please check your network connectivity.")
-    ;;             (error "Network connectivity issue"))
-    ;;            ((eq 401 (or (plist-get (plist-get (request-response-data response) :error) :code)
-    ;;                         status-code))
-    ;;             (org-gcal--notify
-    ;;              "Received HTTP 401"
-    ;;              "OAuth token expired. Now trying to refresh-token")
-    ;;             (deferred:$
-    ;;               (org-gcal--refresh-token calendar-id)
-    ;;               (deferred:nextc it
-    ;;                 (lambda (_unused)
-    ;;                   (org-gcal--post-event start end smry loc desc calendar-id
-    ;;                                         marker etag event-id nil
-    ;;                                         skip-import skip-export)))))
-    ;;            ;; ETag on current entry is stale. This means the event on the
-    ;;            ;; server has been updated. In that case, update the event using
-    ;;            ;; the data from the server.
-    ;;            ((eq status-code 412)
-    ;;             (unless skip-import
-    ;;               (org-gcal--notify
-    ;;                "Received HTTP 412"
-    ;;                (format "ETag stale for %s\n%s\n\n%s"
-    ;;                        smry
-    ;;                        (org-gcal--format-entry-id calendar-id event-id)
-    ;;                        "Will overwrite this entry with event from server."))
-    ;;               (deferred:$
-    ;;                 (org-gcal--get-event calendar-id event-id)
-    ;;                 (deferred:nextc it
-    ;;                   (lambda (response)
-    ;;                     (save-excursion
-    ;;                       (with-current-buffer (marker-buffer marker)
-    ;;                         (goto-char (marker-position marker))
-    ;;                         (org-gcal--update-entry
-    ;;                          calendar-id
-    ;;                          (request-response-data response)
-    ;;                          (if event-id 'update-existing 'create-from-entry))))
-    ;;                     (deferred:succeed nil))))))
-    ;;            ;; Generic error-handler meant to provide useful information about
-    ;;            ;; failure cases not otherwise explicitly specified.
-    ;;            ((not (eq error-msg nil))
-    ;;             (org-gcal--notify
-    ;;              (concat "Status code: " (number-to-string status-code))
-    ;;              (pp-to-string error-msg))
-    ;;             (error "Got error %S: %S" status-code error-msg))
-    ;;            ;; Fetch was successful.
-    ;;            (t
-    ;;             (unless skip-export
-    ;;               (let* ((data (request-response-data response)))
-    ;;                 (save-excursion
-    ;;                   (with-current-buffer (marker-buffer marker)
-    ;;                     (goto-char (marker-position marker))
-    ;;                     ;; Update the entry to add ETag, as well as other
-    ;;                     ;; properties if this is a newly-created event.
-    ;;                     (org-gcal--update-entry calendar-id data
-    ;;                                             (if event-id
-    ;;                                                 'update-existing
-    ;;                                               'create-from-entry))))
-    ;;                 (org-gcal--notify "Event Posted"
-    ;;                                   (concat "Org-gcal post event\n  " (plist-get data :summary)))))
-    ;;             (deferred:succeed nil)))))))
-    ;;   :finally
-    ;;   (lambda (_)
-    ;;     (set-marker marker nil)))))
+For URL and SETTINGS see ‘org-gcal--aio-request’."
+  (condition-case err
+      (aio-await (apply #'org-gcal--aio-request url settings))
+   (aio-request (cdr err))))
 
 (defun org-gcal-reload-client-id-secret ()
   "Setup OAuth2 authentication after setting client ID and secret."
