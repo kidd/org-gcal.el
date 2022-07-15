@@ -398,7 +398,6 @@ SKIP-EXPORT.  Set SILENT to non-nil to inhibit notifications."
       (lambda ()
         (org-gcal--sync-unlock)))))
 
-;;;###autoload
 (aio-iter2-defun org-gcal-sync-aio (&optional skip-export silent)
   "Import events from calendars.
 Export the ones to the calendar if unless
@@ -1201,7 +1200,6 @@ AIO version: ‘org-gcal-fetch-aio’."
   (interactive)
   (org-gcal-sync t))
 
-;;;###autoload
 (aio-iter2-defun org-gcal-fetch-aio ()
   "Fetch event data from google calendar."
   (interactive)
@@ -1499,7 +1497,6 @@ AIO version: ‘org-gcal-fetch-buffer-aio’."
   (interactive)
   (org-gcal-sync-buffer t silent filter-date))
 
-;;;###autoload
 (aio-iter2-defun org-gcal-fetch-buffer-aio (&optional silent filter-date)
   "Fetch changes to events in the currently-visible portion of the buffer
 
@@ -1884,7 +1881,6 @@ AIO version: ‘org-gcal-post-at-point-aio'."
         (org-gcal--post-event start end smry loc source desc calendar-id marker transparency etag
                               event-id nil skip-import skip-export)))))
 
-;;;###autoload
 (aio-iter2-defun org-gcal-post-at-point-aio (&optional skip-import skip-export existing-mode)
   "Post entry at point to current calendar.
 
@@ -2077,7 +2073,6 @@ delete calendar info from events on calendars you no longer have access to."
   (aio-wait-for
    (oauth2-auto-access-token calendar-id 'org-gcal)))
 
-;;;###autoload
 (aio-iter2-defun org-gcal-delete-at-point-aio (&optional clear-gcal-info)
   "Delete entry at point to current calendar.
 
