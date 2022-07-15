@@ -34,6 +34,7 @@
 ;; 2014-01-03 Initial release.
 
 (require 'aio)
+(require 'aio-iter2)
 (require 'alert)
 (require 'cl-lib)
 (require 'json)
@@ -343,7 +344,9 @@ Persisted between sessions of Emacs.  To clear sync tokens, call
 
 This is a macro instead of a function so that it can be used as a place
 expression in ‘setf’.  In that case, if REMOVE? is non-nil, the key-value
-pair will be removed instead of set."
+pair will be removed instead of set.
+
+AIO version: ‘org-gcal-sync-aio'."
   `(alist-get ,key org-gcal--sync-tokens nil ,remove? #'equal))
 
 ;;;###autoload
@@ -364,10 +367,10 @@ SKIP-EXPORT.  Set SILENT to non-nil to inhibit notifications."
   (let ((up-time (org-gcal--up-time))
         (down-time (org-gcal--down-time)))
     (deferred:try
-      (deferred:$
+      (deferred:$                       ; Migrated to AIO
         (deferred:loop org-gcal-fetch-file-alist
           (lambda (calendar-id-file)
-            (deferred:$
+            (deferred:$                 ; Migrated to AIO
               (org-gcal--sync-calendar calendar-id-file skip-export silent
                                        up-time down-time)
               (deferred:succeed nil)
@@ -395,19 +398,68 @@ SKIP-EXPORT.  Set SILENT to non-nil to inhibit notifications."
       (lambda ()
         (org-gcal--sync-unlock)))))
 
+;;;###autoload
+(aio-iter2-defun org-gcal-sync-aio (&optional skip-export silent)
+  "Import events from calendars.
+Export the ones to the calendar if unless
+SKIP-EXPORT.  Set SILENT to non-nil to inhibit notifications."
+  (interactive)
+  (when org-gcal--sync-lock
+    (user-error "org-gcal sync locked. If a previous sync has failed, call ‘org-gcal--sync-unlock’ to reset the lock and try again."))
+  (org-gcal--sync-lock)
+  (org-generic-id-update-id-locations org-gcal-entry-id-property)
+  (org-gcal--aio-wait-for-background-interactive
+   (aio-iter2-with-async
+    (aio-await (org-gcal--ensure-token-aio))
+    (when org-gcal-auto-archive
+      (dolist (i org-gcal-fetch-file-alist)
+        (with-current-buffer
+            (find-file-noselect (cdr i))
+          (org-gcal--archive-old-event))))
+    (let ((up-time (org-gcal--up-time))
+          (down-time (org-gcal--down-time)))
+      (condition-case err
+          (let*
+              ((promises
+                (cl-loop for calendar-id-file in org-gcal-fetch-file-alist
+                         collect
+                         (aio-iter2-with-async
+                           (aio-await
+                            (org-gcal--sync-calendar-aio
+                             calendar-id-file skip-export silent
+                             up-time down-time))
+                          (org-gcal--notify "Completed event fetching ."
+                                           (concat "Events fetched into\n"
+                                                  (cdr calendar-id-file))
+                                           silent))))
+               (select (aio-make-select promises)))
+            (cl-loop repeat (length promises)
+                     for next = (aio-await (aio-select select))
+                     do (aio-await next))
+            nil)
+       ((debug t)
+        (org-gcal--sync-unlock)
+        (org-gcal--notify
+         "Org-gcal sync encountered error"
+         (format-string "%S" err)))
+       (:success
+        (org-gcal--sync-unlock)))
+      nil))))
 
 (defun org-gcal--sync-calendar (calendar-id-file skip-export silent
                                 up-time down-time)
   "Sync events for CALENDAR-ID-FILE
 
-CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see."
+CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see.
+
+AIO version: ‘org-gcal--sync-calendar-aio’."
   (let* (
          ;; Need to add a dummy value to the beginning of the list to generate a
          ;; unique list that can be modified in
          ;; ‘org-gcal--sync-calendar-events’. Later we’ll strip this first
          ;; element.
          (parent-events (list 'dummy)))
-    (deferred:$
+    (deferred:$                         ; Migrated to AIO
       (org-gcal--sync-calendar-events
        calendar-id-file skip-export silent nil up-time down-time parent-events)
       (deferred:nextc it
@@ -417,23 +469,52 @@ CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see."
             (cl-remove-duplicates (cdr parent-events) :test #'string=)
             (lambda (parent-event-id)
               (when (eq org-gcal-recurring-events-mode 'nested)
-                (deferred:$
+                (deferred:$             ; Migrated to AIO
                   (org-gcal--sync-event
                    calendar-id-file parent-event-id skip-export)
                   (org-gcal--sync-instances
                    calendar-id-file parent-event-id skip-export silent nil
                    up-time down-time))))))))))
 
+(aio-iter2-defun org-gcal--sync-calendar-aio
+  (calendar-id-file skip-export silent up-time down-time)
+  "Sync events for CALENDAR-ID-FILE
+
+CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see.
+
+Returns a promise to wait for completion."
+  (let* (
+         ;; Need to add a dummy value to the beginning of the list to generate a
+         ;; unique list that can be modified in
+         ;; ‘org-gcal--sync-calendar-events-aio’. Later we’ll strip this first
+         ;; element.
+         (parent-events (list 'dummy)))
+    (aio-await
+     (org-gcal--sync-calendar-events-aio
+      calendar-id-file skip-export silent nil up-time down-time parent-events))
+    (dolist (parent-event-id
+             ;; Strip dummy first element and remove duplicates
+             (cl-remove-duplicates (cdr parent-events) :test #'string=))
+      (when (eq org-gcal-recurring-events-mode 'nested)
+        (aio-await (org-gcal--sync-event-aio
+                    calendar-id-file parent-event-id skip-export))
+        (aio-await (org-gcal--sync-instances
+                    calendar-id-file parent-event-id skip-export silent nil
+                    up-time down-time))))
+    nil))
+
 (defun org-gcal--sync-calendar-events
     (calendar-id-file skip-export silent page-token up-time down-time
      parent-events)
   "Sync events for CALENDAR-ID-FILE
 
-CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see."
+CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see.
+
+AIO version: ‘org-gcal--sync-calendar-events-aio'"
   (let* ((calendar-id (car calendar-id-file))
          (calendar-file (cdr calendar-id-file))
          (page-token-cons '(dummy)))
-    (deferred:$
+    (deferred:$                         ; Migrated to AIO
       (org-gcal--sync-request-events calendar-id page-token up-time down-time)
       (deferred:nextc it
         (lambda (response)
@@ -462,16 +543,54 @@ CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see."
                  up-time down-time parent-events)
               (deferred:succeed nil))))))))
 
+(aio-iter2-defun org-gcal--sync-calendar-events-aio
+  (calendar-id-file skip-export silent page-token up-time down-time
+                    parent-events)
+  "Sync events for CALENDAR-ID-FILE
+
+CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see."
+  (let*
+      ((calendar-id (car calendar-id-file))
+       (calendar-file (cdr calendar-id-file))
+       (page-token-cons '(dummy))
+       (response
+        (aio-await (org-gcal--sync-request-events-aio calendar-id page-token up-time down-time)))
+       (events
+        (let ((retry-fn
+               (aio-iter2-lambda ()
+                 (aio-await
+                  (org-gcal--sync-calendar-events-aio
+                   calendar-id-file skip-export silent page-token
+                   up-time down-time parent-events)))))
+          (aio-await
+           (org-gcal--sync-handle-response-aio
+            response calendar-id-file page-token-cons down-time retry-fn))))
+       (entries
+        (aio-await
+         (org-gcal--sync-handle-events-aio
+          calendar-id calendar-file events nil
+          up-time down-time parent-events))))
+    (aio-await (org-gcal--sync-update-entries-aio calendar-id entries skip-export))
+    ;; Retrieve the next page of results if needed.
+    (let ((pt (car (last page-token-cons))))
+      (when pt
+        (aio-await
+         (org-gcal--sync-calendar-events-aio
+          calendar-id-file skip-export silent pt
+          up-time down-time parent-events))))))
+
 (defun org-gcal--sync-instances
     (calendar-id-file parent-event-id skip-export silent page-token
                       up-time down-time)
   "Sync instances of instances of recurring event PARENT-EVENT-ID.
 
-CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see."
+CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see.
+
+AIO version: ‘org-gcal--sync-instances-aio'"
   (let* ((calendar-id (car calendar-id-file))
          (calendar-file (cdr calendar-id-file))
          (page-token-cons '(dummy)))
-    (deferred:$
+    (deferred:$                         ; Migrated to AIO
       (org-gcal--sync-request-instances calendar-id parent-event-id
                                         up-time down-time page-token)
       (deferred:nextc it
@@ -500,15 +619,56 @@ CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see."
                  pt up-time down-time)
               (deferred:succeed nil))))))))
 
+(aio-iter2-defun org-gcal--sync-instances-aio
+  (calendar-id-file parent-event-id skip-export silent page-token
+                    up-time down-time)
+  "Sync instances of instances of recurring event PARENT-EVENT-ID.
+
+CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see."
+  (let*
+      ((calendar-id (car calendar-id-file))
+       (calendar-file (cdr calendar-id-file))
+       (page-token-cons '(dummy))
+       (response
+        (aio-await
+         (org-gcal--sync-request-instances-aio
+          calendar-id parent-event-id
+          up-time down-time page-token)))
+       (events
+        (let ((retry-fn
+               (aio-iter2-lambda ()
+                 (aio-await
+                  (org-gcal--sync-instances-aio
+                   calendar-id-file parent-event-id skip-export silent
+                   page-token up-time down-time)))))
+          (aio-await
+           (org-gcal--sync-handle-response-aio
+            response calendar-id-file page-token-cons down-time retry-fn))))
+       (entries
+        (aio-await
+         (org-gcal--sync-handle-events-aio
+          calendar-id calendar-file
+          events t up-time down-time nil))))
+    (aio-await (org-gcal--sync-update-entries-aio calendar-id entries skip-export))
+    ;; Retrieve the next page of results if needed.
+    (let ((pt (car (last page-token-cons))))
+      (when pt
+        (aio-await
+         (org-gcal--sync-instances-aio
+          calendar-id-file parent-event-id skip-export silent
+          pt up-time down-time))))))
+
 (defun org-gcal--sync-event
     (calendar-id-file event-id skip-export)
   "Sync a single event given by EVENT-ID
 
-CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see."
+CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see.
+
+AIO version: ‘org-gcal--sync-event-aio'"
   (let* ((calendar-id (car calendar-id-file))
          (calendar-file (cdr calendar-id-file)))
 
-    (deferred:$
+    (deferred:$                         ; Migrated to AIO
       (org-gcal--get-event calendar-id event-id)
       (deferred:nextc it
         (lambda (event) (vector (request-response-data event))))
@@ -520,10 +680,30 @@ CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see."
         (lambda (entries)
           (org-gcal--sync-update-entries calendar-id entries skip-export))))))
 
+(aio-iter2-defun org-gcal--sync-event-aio
+  (calendar-id-file event-id skip-export)
+  "Sync a single event given by EVENT-ID
+
+CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see."
+  (let*
+      ((calendar-id (car calendar-id-file))
+       (calendar-file (cdr calendar-id-file))
+       (events
+        (vector
+         (request-response-data
+          (aio-await (org-gcal--get-event-aio calendar-id event-id)))))
+       (entries
+        (aio-await
+         (org-gcal--sync-handle-events-aio
+          calendar-id calendar-file events nil nil nil nil))))
+    (aio-await (org-gcal--sync-update-entries-aio calendar-id entries skip-export))))
+
 (defun org-gcal--sync-request-events
     (calendar-id page-token up-time down-time)
-  "Request events on CALENDAR-ID, using PAGE-TOKEN if present."
-  (request-deferred
+  "Request events on CALENDAR-ID, using PAGE-TOKEN if present.
+
+AIO version: ‘org-gcal--sync-request-events-aio'"
+  (request-deferred                     ; Migrated to AIO
    (org-gcal-events-url calendar-id)
    :type "GET"
    :headers
@@ -553,10 +733,48 @@ CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see."
     (when page-token `(("pageToken" . ,page-token))))
    :parser 'org-gcal--json-read))
 
+(aio-iter2-defun org-gcal--sync-request-events-aio
+  (calendar-id page-token up-time down-time)
+  "Request events on CALENDAR-ID, using PAGE-TOKEN if present.
+
+AIO version: ‘org-gcal--sync-request-events-aio'"
+  (aio-await
+   (org-gcal--aio-request
+    (org-gcal-events-url calendar-id)
+    :type "GET"
+    :headers
+    `(("Accept" . "application/json")
+      ("Authorization" . ,(format "Bearer %s" (org-gcal--get-access-token calendar-id))))
+    :params
+    (append
+     `(("access_token" . ,(org-gcal--get-access-token calendar-id))
+       ("singleEvents" . "True"))
+     (when org-gcal-local-timezone `(("timeZone" . ,org-gcal-local-timezone)))
+     (seq-let [expires sync-token]
+         ;; Ensure ‘org-gcal--sync-tokens-get’ return value is actually a list
+         ;; before passing to ‘seq-let’.
+         (when-let
+             ((x (org-gcal--sync-tokens-get calendar-id))
+              ((listp x)))
+           x)
+       (cond
+        ;; Don't use the sync token if it's expired.
+        ((and expires sync-token
+              (time-less-p (current-time) expires))
+         `(("syncToken" . ,sync-token)))
+        (t
+         (setf (org-gcal--sync-tokens-get calendar-id 'remove) nil)
+         `(("timeMin" . ,(org-gcal--format-time2iso up-time))
+           ("timeMax" . ,(org-gcal--format-time2iso down-time))))))
+     (when page-token `(("pageToken" . ,page-token))))
+    :parser 'org-gcal--json-read)))
+
 (defun org-gcal--sync-request-instances
     (calendar-id event-id up-time down-time page-token)
-  "Request instances of recurring event EVENT-ID on CALENDAR-ID."
-  (request-deferred
+  "Request instances of recurring event EVENT-ID on CALENDAR-ID.
+
+AIO version: ‘org-gcal--sync-request-instances-aio'"
+  (request-deferred                     ; Migrated to AIO
    (org-gcal-instances-url calendar-id event-id)
    :type "GET"
    :headers
@@ -570,12 +788,32 @@ CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see."
     (when page-token `(("pageToken" . ,page-token))))
    :parser 'org-gcal--json-read))
 
+(aio-iter2-defun org-gcal--sync-request-instances-aio
+    (calendar-id event-id up-time down-time page-token)
+  "Request instances of recurring event EVENT-ID on CALENDAR-ID."
+  (aio-await
+   (org-gcal--aio-request
+    (org-gcal-instances-url calendar-id event-id)
+    :type "GET"
+    :headers
+    `(("Accept" . "application/json")
+      ("Authorization" . ,(format "Bearer %s" (org-gcal--get-access-token calendar-id))))
+    :params
+    (append
+     `(("access_token" . ,(org-gcal--get-access-token calendar-id))
+       ("timeMin" . ,(org-gcal--format-time2iso up-time))
+       ("timeMax" . ,(org-gcal--format-time2iso down-time)))
+     (when page-token `(("pageToken" . ,page-token))))
+    :parser 'org-gcal--json-read)))
+
 (defun org-gcal--sync-handle-response
     (response calendar-id-file page-token-cons down-time retry-fn)
   "Handle RESPONSE in ‘org-gcal--sync-calendar' for CALENDAR-ID-FILE.
 
 Update PAGE-TOKEN from the response, and return a ‘deferred’ list of event
-objects for further processing."
+objects for further processing.
+
+AIO version: ‘org-gcal--sync-handle-response-aio'"
   (let
       ((data (request-response-data response))
        (status-code (request-response-status-code response))
@@ -642,7 +880,164 @@ objects for further processing."
                  next-sync-token))))
       (org-gcal--filter (plist-get data :items))))))
 
+(aio-iter2-defun org-gcal--sync-handle-response-aio
+  (response calendar-id-file page-token-cons down-time retry-fn)
+  "Handle RESPONSE in ‘org-gcal--sync-calendar' for CALENDAR-ID-FILE.
+
+Update PAGE-TOKEN from the response, and return a list of event objects for
+further processing."
+  (let*
+      ((data (request-response-data response))
+       (status-code (request-response-status-code response))
+       (error-thrown (request-response-error-thrown response))
+       (calendar-id (car calendar-id-file)))
+    (cond
+     ;; If there is no network connectivity, the response will
+     ;; not include a status code.
+     ((eq status-code nil)
+      (org-gcal--notify
+       "Got Error"
+       "Could not contact remote service. Please check your network connectivity.")
+      (error "Got error %S: %S" status-code error-thrown))
+     ((eq 401 (or (plist-get (plist-get (request-response-data response) :error) :code)
+                  status-code))
+      (org-gcal--notify
+       "Received HTTP 401"
+       "OAuth token expired. Now trying to refresh-token")
+      (aio-await (org-gcal--refresh-token-aio calendar-id))
+      (aio-await (funcall retry-fn))
+      ((eq 403 status-code)
+       (org-gcal--notify "Received HTTP 403"
+                         "Ensure you enabled the Calendar API through the Developers Console, then try again.")
+       (error "Got error %S: %S" status-code error-thrown))
+      ((eq 410 status-code)
+       (org-gcal--notify "Received HTTP 410"
+                         "Calendar API sync token expired - performing full sync.")
+       (setf (org-gcal--sync-tokens-get calendar-id 'remove) nil)
+       (aio-await (funcall retry-fn)))
+      ;; We got some 2xx response, but for some reason no
+      ;; message body.
+      ((and (> 299 status-code) (eq data nil))
+       (org-gcal--notify
+        (concat "Received HTTP" (number-to-string status-code))
+        "Error occured, but no message body.")
+       (error "Got error %S: %S" status-code error-thrown))
+      ((not (eq error-thrown nil))
+       ;; Generic error-handler meant to provide useful
+       ;; information about failure cases not otherwise
+       ;; explicitly specified.
+       (org-gcal--notify
+        (concat "Status code: " (number-to-string status-code))
+        (pp-to-string error-thrown))
+       (error "Got error %S: %S" status-code error-thrown))
+      ;; Fetch was successful. Return the list of events retrieved for
+      ;; further processing.
+      (t
+       (nconc page-token-cons (list (plist-get data :nextPageToken)))
+       (let ((next-sync-token (plist-get data :nextSyncToken)))
+         (when next-sync-token
+           (setf (org-gcal--sync-tokens-get calendar-id)
+                 (list
+                  ;; The first element is the expiration time of
+                  ;; the sync token. Note that, if the expiration
+                  ;; time already exists, we don't update it. We
+                  ;; want to expire the token according to the
+                  ;; time of the previous full sync.
+                  (or
+                   (car (org-gcal--sync-tokens-get calendar-id))
+                   down-time)
+                  next-sync-token))))
+       (org-gcal--filter (plist-get data :items)))))))
+
 (defun org-gcal--sync-handle-events
+    (calendar-id calendar-file events recurring-instances? up-time down-time
+     parent-events)
+  "Handle a list of EVENTS fetched from the Calendar API.
+
+CALENDAR-ID and CALENDAR-FILE are defined in ‘org-gcal--sync-inner'.
+RECURRING-INSTANCES? is t if we’re currently fetching instances of recurring
+events and nil otherwise.
+
+Any parent recurring events are appended in-place to the list PARENT-EVENTS.
+
+AIO version: ‘org-gcal--sync-handle-events-aio'"
+  (with-current-buffer (find-file-noselect calendar-file)
+    (cl-loop
+     for event across events
+     if
+     (let* ((entry-id (org-gcal--format-entry-id
+                       calendar-id (plist-get event :id)))
+            (marker (org-gcal--id-find entry-id 'markerp)))
+       (when (plist-get event :recurrence)
+         (nconc parent-events (list
+                               (org-gcal--event-id-from-entry-id entry-id))))
+       (cond
+        ;; Ignore event entirely if it is an instance of a recurring event
+        ;; unless we’re currently fetching
+        ;; instances of recurring events (i.e., RECURRING-INSTANCES? is
+        ;; non-nil).
+        ((and (eq org-gcal-recurring-events-mode 'nested)
+              (not recurring-instances?)
+              (plist-get event :recurringEventId))
+         (nconc parent-events
+                (list
+                 (plist-get event :recurringEventId)))
+         nil)
+        ;; If event is present, collect it for later processing.
+        (marker
+         (org-gcal--event-entry-create
+          :entry-id entry-id
+          :marker marker
+          :event event))
+        ;; If event doesn’t already exist and is outside of the
+        ;; range [‘org-gcal-up-days’, ‘org-gcal-down-days’], ignore
+        ;; it. This is necessary because when called with
+        ;; "syncToken", the Calendar API will return all events
+        ;; changed on the calendar, without respecting
+        ;; ‘org-gcal-up-days’ or ‘org-gcal-down-days’, which means
+        ;; repeated events far in the future will be downloaded.
+        ((when-let*
+             ((up-time) (down-time)
+              (start (plist-get event :start))
+              (end (plist-get event :end))
+              ((or (time-less-p (org-gcal--parse-calendar-time start)
+                                up-time)
+                   (time-less-p down-time
+                                (org-gcal--parse-calendar-time end)))))
+           t)
+         nil)
+        ;; When fetching instances of recurring events that are not yet
+        ;; present, insert them below their parent events, if the parent event
+        ;; exists.
+        (recurring-instances?
+         (let* ((parent-id (org-gcal--format-entry-id
+                            calendar-id (plist-get event :recurringEventId)))
+                (parent-marker
+                 (when parent-id (org-gcal--id-find parent-id 'markerp))))
+           (when parent-marker
+             (atomic-change-group
+               (org-with-point-at parent-marker
+                 (org-insert-heading-respect-content 'invisible-ok)
+                 (org-demote)
+                 (org-gcal--update-entry calendar-id event 'newly-fetched))))
+           nil))
+        ;; Don't insert instances of cancelled events that haven't already been
+        ;; fetched.
+        ((string= "cancelled" (plist-get event :status))
+         nil)
+        (t
+         ;; Otherwise, insert a new entry into the
+         ;; default fetch file.
+         (atomic-change-group
+           (org-with-point-at (point-max)
+             (insert "\n* ")
+             (org-gcal--update-entry calendar-id event 'newly-fetched)
+             (org-entry-put (point) org-gcal-managed-property
+                            org-gcal-managed-newly-fetched-mode)))
+         nil)))
+     collect it)))
+
+(aio-iter2-defun org-gcal--sync-handle-events-aio
     (calendar-id calendar-file events recurring-instances? up-time down-time
      parent-events)
   "Handle a list of EVENTS fetched from the Calendar API.
@@ -733,11 +1128,13 @@ Any parent recurring events are appended in-place to the list PARENT-EVENTS."
 
 Find already retrieved entries and update them. This will update events that
 have been moved from the default fetch file.  CALENDAR-ID is defined in
-‘org-gcal--sync-inner'."
-  (deferred:$
+‘org-gcal--sync-inner'.
+
+AIO version: ‘org-gcal--sync-update-entries-aio'"
+  (deferred:$                           ; Migrated to AIO
     (deferred:loop entries
       (lambda (entry)
-        (deferred:$
+        (deferred:$                     ; Migrated to AIO
           (let ((marker (or (org-gcal--event-entry-marker entry)
                             (org-gcal--id-find (org-gcal--event-entry-entry-id entry))))
                 (event (org-gcal--event-entry-event entry)))
@@ -759,6 +1156,29 @@ have been moved from the default fetch file.  CALENDAR-ID is defined in
               (message "org-gcal-sync: error: %s" err))))))
     (deferred:succeed nil)))
 
+(aio-iter2-defun org-gcal--sync-update-entries-aio (calendar-id entries skip-export)
+  "Update headlines given by ‘org-gcal--event-entry’ ENTRIES.
+
+Find already retrieved entries and update them. This will update events that
+have been moved from the default fetch file.  CALENDAR-ID is defined in
+‘org-gcal--sync-inner'."
+  (dolist (entry entries)
+    (let ((marker (or (org-gcal--event-entry-marker entry)
+                      (org-gcal--id-find (org-gcal--event-entry-entry-id entry))))
+          (event (org-gcal--event-entry-event entry)))
+      (org-with-point-at marker
+        ;; If skipping exports, just overwrite current entry's
+        ;; calendar data with what's been retrieved from the
+        ;; server. Otherwise, sync the entry at the current
+        ;; point.
+        (set-marker marker nil)
+        (if (and skip-export event)
+            (org-gcal--update-entry calendar-id event 'update-existing)
+          (aio-await
+           (org-gcal-post-at-point-aio
+            nil skip-export (org-gcal--sync-get-update-existing))))
+        nil))))
+
 (defun org-gcal--sync-lock ()
   "Activate sync lock."
   (setq org-gcal--sync-lock t))
@@ -776,9 +1196,19 @@ have been moved from the default fetch file.  CALENDAR-ID is defined in
 
 ;;;###autoload
 (defun org-gcal-fetch ()
-  "Fetch event data from google calendar."
+  "Fetch event data from google calendar.
+
+AIO version: ‘org-gcal-fetch-aio’."
   (interactive)
   (org-gcal-sync t))
+
+;;;###autoload
+(aio-iter2-defun org-gcal-fetch-aio ()
+  "Fetch event data from google calendar."
+  (interactive)
+  (org-gcal--aio-wait-for-background-interactive
+   (aio-with-async
+     (org-gcal-sync-aio t))))
 
 ;;;###autoload
 (defun org-gcal-sync-buffer (&optional skip-export silent filter-date
@@ -791,7 +1221,9 @@ Set SILENT to non-nil to inhibit notifications.
 Set FILTER-DATE to only update events scheduled for later than
 ‘org-gcal-up-days' and earlier than ‘org-gcal-down-days'.
 Set FILTER-MAANGED to only update events with ‘org-gcal-managed-property’ set
-to “org”."
+to “org”.
+
+AIO version: see ‘org-gcal-sync-buffer-aio'."
   (interactive)
   (when org-gcal--sync-lock
     (user-error "org-gcal sync locked. If a previous sync has failed, call ‘org-gcal--sync-unlock’ to reset the lock and try again."))
@@ -799,7 +1231,7 @@ to “org”."
   (let*
       ((name (or (buffer-file-name) (buffer-name))))
     (deferred:try
-      (deferred:$
+      (deferred:$                       ; Migrated to AIO
         (org-gcal--sync-buffer-inner skip-export silent filter-date
                                      filter-managed
                                      (point-min-marker))
@@ -814,6 +1246,35 @@ to “org”."
         (org-generic-id-update-id-locations org-gcal-entry-id-property)
         (org-gcal--sync-unlock)))))
 
+(aio-iter2-defun org-gcal-sync-buffer-aio
+  (&optional skip-export silent filter-date filter-managed)
+  "Sync entries with Calendar events in currently-visible portion of buffer.
+
+Updates events on the server unless SKIP-EXPORT is set. In this case, events
+modified on the server will overwrite entries in the buffer.
+Set SILENT to non-nil to inhibit notifications.
+Set FILTER-DATE to only update events scheduled for later than
+‘org-gcal-up-days' and earlier than ‘org-gcal-down-days'.
+Set FILTER-MAANGED to only update events with ‘org-gcal-managed-property’ set
+to “org”."
+  (interactive)
+  (when org-gcal--sync-lock
+    (user-error "org-gcal sync locked. If a previous sync has failed, call ‘org-gcal--sync-unlock’ to reset the lock and try again."))
+  (org-gcal--sync-lock)
+  (org-gcal--ensure-token)
+  (org-gcal--aio-wait-for-background-interactive
+   (aio-iter2-with-async
+      (aio-await
+       (org-gcal--sync-buffer-inner-aio skip-export silent filter-date
+                                        filter-managed
+                                        (point-min-marker)))
+      (org-gcal--notify "Completed syncing events in buffer."
+                        (concat "Events synced in\n" (buffer-file-name))
+                        silent)
+      (org-generic-id-update-id-locations org-gcal-entry-id-property)
+      (org-gcal--sync-unlock)
+      nil)))
+
 (defmacro org-gcal--with-point-at-no-widen (pom &rest body)
   "Move to buffer and point of point-or-marker POM for the duration of BODY.
 
@@ -822,17 +1283,20 @@ Based on ‘org-with-point-at’ but doesn’t widen the buffer."
   (org-with-gensyms (mpom)
     `(let ((,mpom ,pom))
        (save-excursion
-         (when (markerp ,mpom) (set-buffer (marker-buffer ,mpom)))
-         (goto-char (or ,mpom (point)))
-         ,@body))))
+         (save-restriction
+           (when (markerp ,mpom) (set-buffer (marker-buffer ,mpom)))
+           (goto-char (or ,mpom (point)))
+           ,@body)))))
 
 (defun org-gcal--sync-buffer-inner
     (skip-export _silent filter-date filter-managed marker)
-  "Inner loop of ‘org-gcal-sync-buffer’."
+  "Inner loop of ‘org-gcal-sync-buffer’..
+
+AIO version: see ‘org-gcal--sync-buffer-inner-aio’."
   (while
       (not
        (catch 'block
-         (deferred:$
+         (deferred:$                    ; Migrated to AIO
            (deferred:succeed nil)
            (deferred:nextc it
              ;; Returns (wrapped in deferred object):
@@ -906,7 +1370,7 @@ Based on ‘org-with-point-at’ but doesn’t widen the buffer."
                                         org-gcal-managed-property)))))
                                (deferred:succeed marker)
                              (deferred:try
-                               (deferred:$
+                               (deferred:$ ; Migrated to AIO
                                  ;; Try to avoid hanging Emacs during
                                  ;; interactive use by waiting until Emacs is
                                  ;; idle.
@@ -935,14 +1399,130 @@ Based on ‘org-with-point-at’ but doesn’t widen the buffer."
                (message "org-gcal-sync-buffer: error: %s" err)))))))
   (deferred:succeed nil))
 
+(aio-iter2-defun org-gcal--sync-buffer-inner-aio
+  (skip-export _silent filter-date filter-managed marker)
+  "Inner loop of ‘org-gcal-sync-buffer-aio’. Returns a promise to wait for completion."
+  (while
+      (not
+       (catch 'block
+         (let*
+             ((m
+               ;; Returns promise of:
+               ;; - marker within current headline if there are still headlines
+               ;;   left in the file.
+               ;; - nil if there are no more headlines.
+               (aio-await
+                (org-gcal--with-point-at-no-widen marker
+                  ;; By default set next position of marker to nil. We’ll set it below if
+                  ;; there remains more to edit.
+                  (message "start of loop: %S" (point-marker))
+                  (setq marker nil)
+                  (let* ((drawer-point
+                          (lambda ()
+                            (re-search-forward
+                             (format "^[ \t]*:%s:[ \t]*$" org-gcal-drawer-name)
+                             (point-max)
+                             'noerror)))
+                         (marker-for-post
+                          (cond
+                           ((eq major-mode 'org-mode)
+                            (when (funcall drawer-point)
+                              (setq marker (point-marker))
+                              marker))
+                           ((eq major-mode 'org-agenda-mode)
+                            (while (and (not marker) (not (eobp)))
+                              (when-let ((agenda-marker (point-marker))
+                                         (org-marker (org-get-at-bol 'org-hd-marker)))
+                                (org-with-point-at org-marker
+                                  (org-narrow-to-element)
+                                  (when (funcall drawer-point)
+                                    (setq marker agenda-marker)
+                                    (point-marker)))))
+                            ;; If org-marker isn’t found on this line, go to the next one.
+                            (forward-line 1))
+                           (t
+                            (user-error "Unsupported major mode %s in current buffer"
+                                        major-mode)))))
+                    (if (and marker marker-for-post)
+                        (org-with-point-at marker-for-post
+                          (let* ((time-desc (org-gcal--get-time-and-desc))
+                                 (start
+                                  (plist-get time-desc :start))
+                                 (start
+                                  (and start
+                                       (org-gcal--parse-calendar-time-string start)))
+                                 (end (plist-get time-desc :end))
+                                 (end
+                                  (and end
+                                       (org-gcal--parse-calendar-time-string end))))
+                            (if
+                                ;; Skip posting the headline under these
+                                ;; conditions
+                                (or
+                                 ;; Don’t sync events if ‘filter-date’ is set
+                                 ;; and event is too far in the past or
+                                 ;; future.
+                                 (and filter-date
+                                      (or
+                                       (not start) (not end)
+                                       (time-less-p start (org-gcal--up-time))
+                                       (time-less-p (org-gcal--down-time) end)))
+                                 ;; Don’t sync if ‘filter-managed’ is set and
+                                 ;; headline is not managed by Org (see
+                                 ;; ‘org-gcal-managed-property')
+                                 (and filter-managed
+                                      (not
+                                       (string=
+                                        "org"
+                                        (org-entry-get
+                                         (point)
+                                         org-gcal-managed-property)))))
+                                marker
+                              ;; Try to avoid hanging Emacs during interactive
+                              ;; use by waiting until Emacs is idle.
+                              (condition-case-unless-debug err
+                                  (progn
+                                    (aio-await (aio-idle 0.1))
+                                    (org-with-point-at marker-for-post
+                                      (message "about to post: %S %S" marker-for-post (point-marker))
+                                      (aio-await
+                                       (org-gcal-post-at-point-aio
+                                        nil skip-export
+                                        (org-gcal--sync-get-update-existing)))))
+                                (error
+                                 (message "org-gcal-sync-buffer: event %S: error: %S"
+                                          time-desc err)))
+                              marker)))
+                      nil))))))
+           (when m
+             (setq marker m)
+             (throw 'block nil))
+           nil))))
+  nil)
+
+
 ;;;###autoload
 (defun org-gcal-fetch-buffer (&optional silent filter-date)
   "Fetch changes to events in the currently-visible portion of the buffer
 
 Unlike ‘org-gcal-sync-buffer’, this will not push any changes to Google
-Calendar. For SILENT and FILTER-DATE see ‘org-gcal-sync-buffer’."
+Calendar. For SILENT and FILTER-DATE see ‘org-gcal-sync-buffer’.
+
+AIO version: ‘org-gcal-fetch-buffer-aio’."
   (interactive)
   (org-gcal-sync-buffer t silent filter-date))
+
+;;;###autoload
+(aio-iter2-defun org-gcal-fetch-buffer-aio (&optional silent filter-date)
+  "Fetch changes to events in the currently-visible portion of the buffer
+
+Unlike ‘org-gcal-sync-buffer’, this will not push any changes to Google
+Calendar. For SILENT and FILTER-DATE see ‘org-gcal-sync-buffer’."
+  (interactive)
+  (org-gcal--aio-wait-for-background-interactive
+   (aio-with-async
+    (aio-await (org-gcal-sync-buffer-aio t silent filter-date)))))
+
 
 (defvar org-gcal-debug nil)
 ;;;###autoload
@@ -1212,7 +1792,9 @@ which case the entry is overwritten with data from the server instead.
 If SKIP-IMPORT is not nil, don’t overwrite the entry with data from the server.
 If SKIP-EXPORT is not nil, don’t overwrite the event on the server.
 For valid values of EXISTING-MODE see
-‘org-gcal-managed-post-at-point-update-existing'."
+‘org-gcal-managed-post-at-point-update-existing'.
+
+AIO version: ‘org-gcal-post-at-point-aio'."
   (interactive)
   (save-excursion
     ;; Post entry at point in org-agenda buffer.
@@ -1316,6 +1898,114 @@ For valid values of EXISTING-MODE see
                               event-id nil skip-import skip-export)))))
 
 ;;;###autoload
+(aio-iter2-defun org-gcal-post-at-point-aio (&optional skip-import skip-export existing-mode)
+  "Post entry at point to current calendar.
+
+This overwrites the event on the server with the data from the entry, except if
+the ‘org-gcal-etag-property’ is present and is out of sync with the server, in
+which case the entry is overwritten with data from the server instead.
+
+If SKIP-IMPORT is not nil, don’t overwrite the entry with data from the server.
+If SKIP-EXPORT is not nil, don’t overwrite the event on the server.
+For valid values of EXISTING-MODE see
+‘org-gcal-managed-post-at-point-update-existing'.
+
+Returns a promise to wait for completion."
+  (interactive)
+  (org-gcal--aio-wait-for-background-interactive
+   (aio-iter2-with-async
+     (aio-await (org-gcal--ensure-token-aio))
+     (org-with-point-at (point)
+       ;; Post entry at point in org-agenda buffer.
+       (when (eq major-mode 'org-agenda-mode)
+         (let ((m (org-get-at-bol 'org-hd-marker)))
+           (set-buffer (marker-buffer m))
+           (goto-char (marker-position m))))
+       (end-of-line)
+       (org-gcal--back-to-heading)
+       (let* ((skip-import skip-import)
+              (skip-export skip-export)
+              (marker (point-marker))
+              (elem (org-element-headline-parser (point-max) t))
+              (smry (substring-no-properties
+                     (org-get-heading 'no-tags 'no-todo 'no-priority 'no-comment)))
+              (loc (org-entry-get (point) "LOCATION"))
+              (recurrence (org-entry-get (point) "recurrence"))
+              (event-id (org-gcal--get-id (point)))
+              (etag (org-entry-get (point) org-gcal-etag-property))
+              (managed (org-entry-get (point) org-gcal-managed-property))
+              (calendar-id
+               (org-entry-get (point) org-gcal-calendar-id-property)))
+         ;; Set ‘org-gcal-managed-property’ if not present.
+         (unless (and managed (member managed '("org" "gcal")))
+           (let ((x
+                  (if (and calendar-id event-id)
+                      org-gcal-managed-update-existing-mode
+                    org-gcal-managed-create-from-entry-mode)))
+             (org-entry-put (point) org-gcal-managed-property x)
+             (setq managed x)))
+         ;; Fill in Calendar ID if not already present.
+         (unless calendar-id
+           (setq calendar-id
+                 (completing-read "Calendar ID: "
+                                  (mapcar #'car org-gcal-file-alist)))
+           (org-entry-put (point) org-gcal-calendar-id-property calendar-id))
+         (when (equal managed "gcal")
+           (unless existing-mode
+             (setq existing-mode org-gcal-managed-post-at-point-update-existing))
+           (pcase existing-mode
+             ('never-push
+              (setq skip-export t))
+             ;; PROMPT and PROMPT-SYNC are handled identically here. When syncing
+             ;; PROMPT is mapped to NEVER-PUSH in the calling function, while
+             ;; PROMPT-SYNC is left unchanged.
+             ;; Only when manually running ‘org-gcal-post-at-point’ should PROMPT
+             ;; be seen here.
+             ((or 'prompt 'prompt-sync)
+              (unless (y-or-n-p (format "Push event to Google Calendar?\n\n%s\n\n"
+                                        smry))
+                (setq skip-export t)))
+             ('always-push nil)
+             (val
+              (user-error "Bad value %S of EXISTING-MODE passed to ‘org-gcal-post-at-point’. For valid values see ‘org-gcal-managed-post-at-point-update-existing’."
+                          val))))
+         ;; Read currently-present start and end times and description. Fill in a
+         ;; reasonable start and end time if either is missing.
+         (let* ((time-desc (org-gcal--get-time-and-desc))
+                (start (plist-get time-desc :start))
+                (end (plist-get time-desc :end))
+                (desc (plist-get time-desc :desc)))
+           (unless end
+             (let* ((start-time (or start (org-read-date 'with-time 'to-time)))
+                    (min-duration 5)
+                    (resolution 5)
+                    (duration-default
+                     (org-duration-from-minutes
+                      (max
+                       min-duration
+                       ;; Round up to the nearest multiple of ‘resolution’ minutes.
+                       (* resolution
+                          (ceiling
+                           (/ (- (org-duration-to-minutes
+                                  (or (org-element-property :EFFORT elem) "0:00"))
+                                 (org-clock-sum-current-item))
+                              resolution))))))
+                    (duration (read-from-minibuffer "Duration: " duration-default))
+                    (duration-minutes (org-duration-to-minutes duration))
+                    (duration-seconds (* 60 duration-minutes))
+                    (end-time (time-add start-time duration-seconds)))
+               (setq start (org-gcal--format-time2iso start-time)
+                     end (org-gcal--format-time2iso end-time))))
+           (when recurrence
+             (setq start nil end nil))
+           (aio-await
+            (org-gcal--post-event-aio
+             start end smry loc desc
+             calendar-id marker etag event-id
+             nil skip-import skip-export)))))
+     nil)))
+
+;;;###autoload
 (defun org-gcal-delete-at-point (&optional clear-gcal-info)
   "Delete entry at point to current calendar.
 
@@ -1380,6 +2070,79 @@ delete calendar info from events on calendars you no longer have access to."
   "Return the access token for CALENDAR-ID."
   (aio-wait-for
    (oauth2-auto-access-token calendar-id 'org-gcal)))
+
+;;;###autoload
+(aio-iter2-defun org-gcal-delete-at-point-aio (&optional clear-gcal-info)
+  "Delete entry at point to current calendar.
+
+If called with prefix or with CLEAR-GCAL-INFO non-nil, will clear calendar info
+from the entry even if deleting the event from the server fails.  Use this to
+delete calendar info from events on calendars you no longer have access to.
+
+Returns a promise to wait for completion."
+  (interactive)
+  (org-gcal--aio-wait-for-background-interactive
+   (aio-iter2-with-async
+    (aio-await (org-gcal--ensure-token-aio))
+    (save-excursion
+      ;; Delete entry at point in org-agenda buffer.
+      (when (eq major-mode 'org-agenda-mode)
+        (let ((m (org-get-at-bol 'org-hd-marker)))
+          (set-buffer (marker-buffer m))
+          (goto-char (marker-position m))))
+      (end-of-line)
+      (org-gcal--back-to-heading)
+      (let* ((marker (point-marker))
+             (smry (org-get-heading 'no-tags 'no-todo 'no-priority 'no-comment))
+             (event-id (org-gcal--get-id (point)))
+             (etag (org-entry-get (point) org-gcal-etag-property))
+             (calendar-id
+              (org-entry-get (point) org-gcal-calendar-id-property))
+             (delete-error))
+        (when (and event-id
+                   (y-or-n-p (format "Do you really want to delete event?\n\n%s\n\n" smry)))
+          (condition-case err
+              (aio-await (org-gcal--delete-event-aio calendar-id event-id etag (copy-marker marker)))
+            (error
+             (message "Setting delete-error to %S" err)
+             (setq delete-error err)))
+          ;; Delete :org-gcal: drawer after deleting event. This will preserve
+          ;; the ID for links, but will ensure functions in this module don’t
+          ;; identify the entry as a Calendar event.
+          (org-with-point-at marker
+            (when (re-search-forward
+                   (format
+                    "^[ \t]*:%s:[^z-a]*?\n[ \t]*:END:[ \t]*\n?"
+                    (regexp-quote org-gcal-drawer-name))
+                   (save-excursion (outline-next-heading) (point))
+                   'noerror)
+              (replace-match "" 'fixedcase))
+            (org-entry-delete marker org-gcal-calendar-id-property)
+            (org-entry-delete marker org-gcal-entry-id-property))
+          ;; Finally cancel and delete the event if this is configured.
+          (org-with-point-at marker
+            (org-back-to-heading)
+            (org-gcal--handle-cancelled-entry)))
+        (when delete-error
+          (error "org-gcal-delete-at-point: for %s %s: error: %S"
+                 calendar-id event-id delete-error)))))))
+
+(defun org-gcal-request-authorization ()
+  "Request OAuth authorization at AUTH-URL by launching `browse-url'.
+  CLIENT-ID is the client id provided by the provider.
+  It returns the code provided by the service."
+  (let* ((gcal-auth-url
+          (concat org-gcal-auth-url
+                  "?client_id=" (url-hexify-string org-gcal-client-id)
+                  "&response_type=code"
+                  "&redirect_uri=" (url-hexify-string "urn:ietf:wg:oauth:2.0:oob")
+                  "&scope=" (url-hexify-string org-gcal-resource-url)))
+         (prompt
+          (format
+           "Please visit (if it doesn't open automatically): %s\n\nEnter the code your browser displayed:"
+           gcal-auth-url)))
+    (browse-url gcal-auth-url)
+    (read-string prompt)))
 
 (defun org-gcal--refresh-token (calendar-id)
   "Refresh OAuth access for CALENDAR-ID.
@@ -1873,11 +2636,12 @@ AIO version: ‘org-gcal--get-event-aio’."
              ;; Fetch was successful.
              (t response))))))))
 
-(aio-defun org-gcal--get-event-aio (calendar-id event-id)
+(aio-iter2-defun org-gcal--get-event-aio (calendar-id event-id)
   "Retrieves a Google Calendar event given a CALENDAR-ID and EVENT-ID.
 
-Returns a ‘aio-promise’ object that can be used to wait for completion."
-  (let* ((a-token (org-gcal--get-access-token))
+Refreshes the access token if needed.
+Returns an ‘aio-promise’ for a ‘request-response' object."
+  (let* ((a-token (org-gcal--get-access-token calendar-id))
          (response
           (aio-await
            (org-gcal--aio-request
@@ -1905,7 +2669,7 @@ Returns a ‘aio-promise’ object that can be used to wait for completion."
           (org-gcal--notify
            "Received HTTP 401"
            "OAuth token expired. Now trying to refresh token.")
-          (aio-await (org-gcal--refresh-token))
+          (aio-await (org-gcal--refresh-token-aio calendar-id))
           (aio-await (org-gcal--get-event-aio calendar-id event-id)))
          ;; Generic error-handler meant to provide useful information about
          ;; failure cases not otherwise explicitly specified.
@@ -1913,7 +2677,8 @@ Returns a ‘aio-promise’ object that can be used to wait for completion."
           (org-gcal--notify
            (concat "Status code: " (number-to-string status-code))
            (pp-to-string error-thrown))
-          (error "Got error %S: %S" status-code error-thrown))
+          (error "org-gcal--get-event: Got error %S for %s %s: %S"
+                 status-code calendar-id event-id error-thrown))
          ;; Fetch was successful.
          (t response))))
 
@@ -1927,14 +2692,16 @@ If ETAG is provided, it is used to retrieve the event data from the server and
 overwrite the event at MARKER if the event has changed on the server. MARKER is
 destroyed by this function.
 
-Returns a ‘deferred’ object that can be used to wait for completion."
+Returns a ‘deferred’ object that can be used to wait for completion.
+
+AIO version: ‘org-gcal--post-event-aio’."
   (let ((stime (org-gcal--param-date start))
         (etime (org-gcal--param-date end))
         (stime-alt (org-gcal--param-date-alt start))
         (etime-alt (org-gcal--param-date-alt end))
         (a-token (or a-token (org-gcal--get-access-token calendar-id))))
     (deferred:try
-      (deferred:$
+      (deferred:$                       ; Migrated to AIO
         (apply
          #'request-deferred
          (concat
@@ -2013,7 +2780,7 @@ Returns a ‘deferred’ object that can be used to wait for completion."
                            smry
                            (org-gcal--format-entry-id calendar-id event-id)
                            "Will overwrite this entry with event from server."))
-                  (deferred:$
+                  (deferred:$           ; Migrated to AIO
                     (org-gcal--get-event calendar-id event-id)
                     (deferred:nextc it
                       (lambda (response)
@@ -2052,6 +2819,128 @@ Returns a ‘deferred’ object that can be used to wait for completion."
       (lambda (_)
         (set-marker marker nil)))))
 
+(aio-iter2-defun org-gcal--post-event-aio (start end smry loc source desc calendar-id marker transparency &optional etag event-id a-token skip-import skip-export)
+  "Creates or updates an event on Google Calendar.
+
+The event with EVENT-ID is modified on CALENDAR-ID with attributes START, END,
+SMRY, LOC, DESC. The Org buffer and point from which the event is read is given
+by MARKER.
+
+If ETAG is provided, it is used to retrieve the event data from the server and
+overwrite the event at MARKER if the event has changed on the server. MARKER is
+destroyed by this function.
+
+Returns a ‘aio-promise’ object that can be used to wait for completion."
+  (let*
+      ((stime (org-gcal--param-date start))
+       (etime (org-gcal--param-date end))
+       (stime-alt (org-gcal--param-date-alt start))
+       (etime-alt (org-gcal--param-date-alt end))
+       (a-token (or a-token (org-gcal--get-access-token calendar-id)))
+       (response
+        (aio-await (apply
+                    #'org-gcal--aio-request
+                    (concat
+                     (org-gcal-events-url calendar-id)
+                     (when event-id
+                       (concat "/" event-id)))
+                    :type (cond
+                           (skip-export "GET")
+                           (event-id "PATCH")
+                           (t "POST"))
+                    :headers (append
+                              `(("Content-Type" . "application/json")
+                                ("Accept" . "application/json")
+                                ("Authorization" . ,(format "Bearer %s" a-token)))
+                              (cond
+                               ((null etag) nil)
+                               ((null event-id)
+                                (error "Event cannot have ETag set when event ID absent"))
+                               (t
+                                `(("If-Match" . ,etag)))))
+                    :parser 'org-gcal--json-read
+                    (unless skip-export
+                      (list
+                       :data (encode-coding-string
+                              (json-encode
+                               (append
+                                `(("summary" . ,smry)
+                                  ("location" . ,loc)
+                                  ("source" . ,source)
+                                  ("transparency" . ,transparency)
+                                  ("description" . ,desc))
+                                (if (and start end)
+                                    `(("start" (,stime . ,start) (,stime-alt . nil))
+                                      ("end" (,etime . ,(if (equal "date" etime)
+                                                            (org-gcal--iso-next-day end)
+                                                          end))
+                                       (,etime-alt . nil)))
+                                  nil)))
+                              'utf-8))))))
+       (_temp (request-response-data response))
+       (status-code (request-response-status-code response))
+       (error-msg (request-response-error-thrown response)))
+    (cond
+     ;; If there is no network connectivity, the response will not
+     ;; include a status code.
+     ((eq status-code nil)
+      (org-gcal--notify
+       "Got Error"
+       "Could not contact remote service. Please check your network connectivity.")
+      (error "Network connectivity issue: %s" error-msg))
+     ((eq 401 (or (plist-get (plist-get (request-response-data response) :error) :code)
+                  status-code))
+      (org-gcal--notify
+       "Received HTTP 401"
+       "OAuth token expired. Now trying to refresh-token")
+      (aio-await (org-gcal--refresh-token-aio calendar-id))
+      (aio-await (org-gcal--post-event-aio start end smry loc desc calendar-id
+                                           marker etag event-id nil
+                                           skip-import skip-export)))
+     ;; ETag on current entry is stale. This means the event on the
+     ;; server has been updated. In that case, update the event using
+     ;; the data from the server.
+     ((eq status-code 412)
+      (unless skip-import
+        (org-gcal--notify
+         "Received HTTP 412"
+         (format "ETag stale for %s\n%s\n\n%s"
+                 smry
+                 (org-gcal--format-entry-id calendar-id event-id)
+                 "Will overwrite this entry with event from server."))
+        (let ((response (aio-await (org-gcal--get-event-aio calendar-id event-id))))
+          (save-excursion
+            (with-current-buffer (marker-buffer marker)
+              (goto-char (marker-position marker))
+              (org-gcal--update-entry
+               calendar-id
+               (request-response-data response)
+               (if event-id 'update-existing 'create-from-entry))))
+          nil)))
+     ;; Generic error-handler meant to provide useful information about
+     ;; failure cases not otherwise explicitly specified.
+     ((not (eq error-msg nil))
+      (org-gcal--notify
+       (concat "Status code: " (number-to-string status-code))
+       (pp-to-string error-msg))
+      (error "Got error %S: %S" status-code error-msg))
+     ;; Fetch was successful.
+     (t
+      (unless skip-export
+        (let* ((data (request-response-data response)))
+          (save-excursion
+            (with-current-buffer (marker-buffer marker)
+              (goto-char (marker-position marker))
+              ;; Update the entry to add ETag, as well as other
+              ;; properties if this is a newly-created event.
+              (org-gcal--update-entry calendar-id data
+                                      (if event-id
+                                          'update-existing
+                                        'create-from-entry))))
+          (org-gcal--notify "Event Posted"
+                            (concat "Org-gcal post event\n  " (plist-get data :summary)))))
+      nil))))
+
 
 (defun org-gcal--delete-event (calendar-id event-id etag marker &optional a-token)
   "\
@@ -2062,10 +2951,12 @@ this function.
 If ETAG is provided, it is used to retrieve the event data from the server and
 overwrite the event at MARKER if the event has changed on the server.
 
-Returns a ‘deferred’ object that can be used to wait for completion."
+Returns a ‘deferred’ object that can be used to wait for completion.
+
+AIO version: ‘org-gcal--delete-event-aio’."
   (let ((a-token (or a-token (org-gcal--get-access-token calendar-id))))
     (deferred:try
-      (deferred:$
+      (deferred:$                       ; Migrated to AIO
         (request-deferred
          (concat
           (org-gcal-events-url calendar-id)
@@ -2117,7 +3008,7 @@ Returns a ‘deferred’ object that can be used to wait for completion."
                  (format "ETag stale for entry %s\n\n%s"
                          (org-gcal--format-entry-id calendar-id event-id)
                          "Will overwrite this entry with event from server."))
-                (deferred:$
+                (deferred:$             ; Migrated to AIO
                   (org-gcal--get-event calendar-id event-id)
                   (deferred:nextc it
                     (lambda (response)
@@ -2180,6 +3071,21 @@ Returns a ‘deferred’ object that can be used to wait for completion."
 (with-eval-after-load 'org-refile
   (add-hook 'org-after-refile-insert-hook 'org-gcal--refile-post))
 
+(defun org-gcal--ensure-token ()
+  "Ensure that access, refresh, and sync token variables in expected state."
+  ;; FIXME: maybe also check access and refresh tokens.
+  (unless (org-gcal--sync-tokens-valid)
+    (persist-load 'org-gcal--sync-tokens)
+    (unless (org-gcal--sync-tokens-valid)
+      (org-gcal-sync-tokens-clear))))
+
+(aio-iter2-defun org-gcal--ensure-token-aio ()
+  "Ensure that access, refresh, and sync token variables in expected state.
+
+Returns a promise to wait for completion."
+  ;; FIXME: maybe also check access and refresh tokens.
+  (org-gcal--ensure-token))
+
 (defun org-gcal--sync-tokens-valid ()
   "Is ‘org-gcal--sync-tokens’ in a valid format?"
   (and (listp org-gcal--sync-tokens)
@@ -2220,18 +3126,34 @@ non-nil."
     (plist-get plst :mon)
     (plist-get plst :year))))
 
-(defun org-gcal--aio-wait-for-background (promise &optional signal)
-  "Wait for PROMISE to resolve in background.
+(defun org-gcal--aio-wait-for-background (promise)
+  "Start a timer to resolve PROMISE in the background and return it.
 
 This is mainly meant for interactive functions that you wish to have run as
 background processes."
-  (cond
-   ((null (aio-result promise))
-    (accept-process-output nil 0.1)
-    (run-at-time 0.5 nil #'aio-wait-for-background promise))
-   (signal
-    (signal 'aio-wait-for-background (funcall (aio-result promise))))
-   (t nil)))
+  ;; Store timer in a cons cell so that it can be modified by both the timer
+  ;; function and this function.
+  (let ((timer-cell (cons nil nil)))
+    (setcar timer-cell
+            (run-at-time
+             nil 0.5
+             (lambda (tc)
+               (condition-case err
+                   (cond
+                    ((null (car tc)) nil)
+                    ((null (aio-result promise))
+                     (accept-process-output nil 0.001)
+                     nil)
+                    (t
+                     (cancel-timer (car tc))
+                     (message "org-gcal--aio-wait-for-background: %S"
+                              (funcall (aio-result promise)))))
+                 ;; Cancel timer on signal so that it doesn’t hang around forever.
+                 (error
+                  (cancel-timer (car tc))
+                  (signal (car err) (cdr err)))))
+             timer-cell))
+    (car timer-cell)))
 
 (defmacro org-gcal--aio-wait-for-background-interactive (promise &optional interactive)
   "If INTERACTIVE or the calling function is called interactively, run PROMISE in background. Otherwise, just return PROMISE."
@@ -2281,7 +3203,6 @@ keys are used by this function to set up the promise resolution."
                             (lambda ()
                               (signal (car error) (cdr error)))))))))
 
-
 (aio-defun org-gcal--post-event-aio (start end smry loc desc calendar-id marker &optional etag event-id a-token skip-import skip-export)
   "\
 Creates or updates an event on Calendar CALENDAR-ID with attributes START, END,
@@ -2297,7 +3218,7 @@ Returns a ‘aio-promise’ object that can be used to wait for completion."
         (etime (org-gcal--param-date end))
         (stime-alt (org-gcal--param-date-alt start))
         (etime-alt (org-gcal--param-date-alt end))
-        (a-token (or a-token (org-gcal--get-access-token))))
+        (a-token (or a-token (org-gcal--get-access-token calendar-id))))
     (let* ((response
             (aio-await (apply
                         #'org-gcal--aio-request
@@ -2396,7 +3317,7 @@ Returns a ‘aio-promise’ object that can be used to wait for completion."
     ;;              "Received HTTP 401"
     ;;              "OAuth token expired. Now trying to refresh-token")
     ;;             (deferred:$
-    ;;               (org-gcal--refresh-token)
+    ;;               (org-gcal--refresh-token calendar-id)
     ;;               (deferred:nextc it
     ;;                 (lambda (_unused)
     ;;                   (org-gcal--post-event start end smry loc desc calendar-id
