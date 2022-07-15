@@ -488,7 +488,7 @@ Returns a promise to wait for completion."
          ;; unique list that can be modified in
          ;; ‘org-gcal--sync-calendar-events-aio’. Later we’ll strip this first
          ;; element.
-         (parent-events (list 'dummy)))
+         (parent-events '(dummy)))
     (aio-await
      (org-gcal--sync-calendar-events-aio
       calendar-id-file skip-export silent nil up-time down-time parent-events))
@@ -500,8 +500,7 @@ Returns a promise to wait for completion."
                     calendar-id-file parent-event-id skip-export))
         (aio-await (org-gcal--sync-instances
                     calendar-id-file parent-event-id skip-export silent nil
-                    up-time down-time))))
-    nil))
+                    up-time down-time))))))
 
 (defun org-gcal--sync-calendar-events
     (calendar-id-file skip-export silent page-token up-time down-time
@@ -1402,104 +1401,92 @@ AIO version: see ‘org-gcal--sync-buffer-inner-aio’."
 (aio-iter2-defun org-gcal--sync-buffer-inner-aio
   (skip-export _silent filter-date filter-managed marker)
   "Inner loop of ‘org-gcal-sync-buffer-aio’. Returns a promise to wait for completion."
-  (while
-      (not
-       (catch 'block
-         (let*
-             ((m
-               ;; Returns promise of:
-               ;; - marker within current headline if there are still headlines
-               ;;   left in the file.
-               ;; - nil if there are no more headlines.
-               (aio-await
-                (org-gcal--with-point-at-no-widen marker
-                  ;; By default set next position of marker to nil. We’ll set it below if
-                  ;; there remains more to edit.
-                  (message "start of loop: %S" (point-marker))
-                  (setq marker nil)
-                  (let* ((drawer-point
-                          (lambda ()
-                            (re-search-forward
-                             (format "^[ \t]*:%s:[ \t]*$" org-gcal-drawer-name)
-                             (point-max)
-                             'noerror)))
-                         (marker-for-post
-                          (cond
-                           ((eq major-mode 'org-mode)
-                            (when (funcall drawer-point)
-                              (setq marker (point-marker))
-                              marker))
-                           ((eq major-mode 'org-agenda-mode)
-                            (while (and (not marker) (not (eobp)))
-                              (when-let ((agenda-marker (point-marker))
-                                         (org-marker (org-get-at-bol 'org-hd-marker)))
-                                (org-with-point-at org-marker
-                                  (org-narrow-to-element)
-                                  (when (funcall drawer-point)
-                                    (setq marker agenda-marker)
-                                    (point-marker)))))
-                            ;; If org-marker isn’t found on this line, go to the next one.
-                            (forward-line 1))
-                           (t
-                            (user-error "Unsupported major mode %s in current buffer"
-                                        major-mode)))))
-                    (if (and marker marker-for-post)
-                        (org-with-point-at marker-for-post
-                          (let* ((time-desc (org-gcal--get-time-and-desc))
-                                 (start
-                                  (plist-get time-desc :start))
-                                 (start
-                                  (and start
-                                       (org-gcal--parse-calendar-time-string start)))
-                                 (end (plist-get time-desc :end))
-                                 (end
-                                  (and end
-                                       (org-gcal--parse-calendar-time-string end))))
-                            (if
-                                ;; Skip posting the headline under these
-                                ;; conditions
-                                (or
-                                 ;; Don’t sync events if ‘filter-date’ is set
-                                 ;; and event is too far in the past or
-                                 ;; future.
-                                 (and filter-date
-                                      (or
-                                       (not start) (not end)
-                                       (time-less-p start (org-gcal--up-time))
-                                       (time-less-p (org-gcal--down-time) end)))
-                                 ;; Don’t sync if ‘filter-managed’ is set and
-                                 ;; headline is not managed by Org (see
-                                 ;; ‘org-gcal-managed-property')
-                                 (and filter-managed
-                                      (not
-                                       (string=
-                                        "org"
-                                        (org-entry-get
-                                         (point)
-                                         org-gcal-managed-property)))))
-                                marker
-                              ;; Try to avoid hanging Emacs during interactive
-                              ;; use by waiting until Emacs is idle.
-                              (condition-case-unless-debug err
-                                  (progn
-                                    (aio-await (aio-idle 0.1))
-                                    (org-with-point-at marker-for-post
-                                      (message "about to post: %S %S" marker-for-post (point-marker))
-                                      (aio-await
-                                       (org-gcal-post-at-point-aio
-                                        nil skip-export
-                                        (org-gcal--sync-get-update-existing)))))
-                                (error
-                                 (message "org-gcal-sync-buffer: event %S: error: %S"
-                                          time-desc err)))
-                              marker)))
-                      nil))))))
-           (when m
-             (setq marker m)
-             (throw 'block nil))
-           nil))))
+  (let* ((marker marker))
+    (while marker
+      (org-gcal--with-point-at-no-widen marker
+        ;; By default set next position of marker to nil. We’ll set it below if
+        ;; there remains more to edit.
+        (message "start of loop: %S" (point-marker))
+        (setq marker nil)
+        (let* ((drawer-point
+                (lambda ()
+                  (re-search-forward
+                   (format "^[ \t]*:%s:[ \t]*$" org-gcal-drawer-name)
+                   (point-max)
+                   'noerror)))
+               (marker-for-post
+                (cond
+                 ((eq major-mode 'org-mode)
+                  (setq marker
+                        (when (funcall drawer-point)
+                          (point-marker)))
+                  marker)
+                 ((eq major-mode 'org-agenda-mode)
+                  (while (and (not marker) (not (eobp)))
+                    (when-let ((agenda-marker (point-marker))
+                               (org-marker (org-get-at-bol 'org-hd-marker)))
+                      (org-with-point-at org-marker
+                        (org-narrow-to-element)
+                        (when (funcall drawer-point)
+                          (setq marker agenda-marker)
+                          (point-marker)))))
+                  ;; If org-marker isn’t found on this line, go to the next one.
+                  (forward-line 1))
+                 (t
+                  (user-error "Unsupported major mode %s in current buffer"
+                              major-mode)))))
+          (if (and marker marker-for-post)
+              (org-with-point-at marker-for-post
+                (let* ((time-desc (org-gcal--get-time-and-desc))
+                       (start
+                        (plist-get time-desc :start))
+                       (start
+                        (and start
+                             (org-gcal--parse-calendar-time-string start)))
+                       (end (plist-get time-desc :end))
+                       (end
+                        (and end
+                             (org-gcal--parse-calendar-time-string end))))
+                  (if
+                      ;; Skip posting the headline under these
+                      ;; conditions
+                      (or
+                       ;; Don’t sync events if ‘filter-date’ is set
+                       ;; and event is too far in the past or
+                       ;; future.
+                       (and filter-date
+                            (or
+                             (not start) (not end)
+                             (time-less-p start (org-gcal--up-time))
+                             (time-less-p (org-gcal--down-time) end)))
+                       ;; Don’t sync if ‘filter-managed’ is set and
+                       ;; headline is not managed by Org (see
+                       ;; ‘org-gcal-managed-property')
+                       (and filter-managed
+                            (not
+                             (string=
+                              "org"
+                              (org-entry-get
+                               (point)
+                               org-gcal-managed-property)))))
+                      marker
+                    ;; Try to avoid hanging Emacs during interactive
+                    ;; use by waiting until Emacs is idle.
+                    (condition-case-unless-debug err
+                        (progn
+                          (aio-await (aio-idle 0.1))
+                          (org-with-point-at marker-for-post
+                            (message "about to post: %S %S" marker-for-post (point-marker))
+                            (aio-await
+                             (org-gcal-post-at-point-aio
+                              nil skip-export
+                              (org-gcal--sync-get-update-existing)))))
+                      (error
+                       (message "org-gcal-sync-buffer: event %S: error: %S"
+                                time-desc err)))
+                    marker)))
+            nil)))))
   nil)
-
 
 ;;;###autoload
 (defun org-gcal-fetch-buffer (&optional silent filter-date)
@@ -1912,98 +1899,99 @@ For valid values of EXISTING-MODE see
 
 Returns a promise to wait for completion."
   (interactive)
-  (org-gcal--aio-wait-for-background-interactive
-   (aio-iter2-with-async
-     (aio-await (org-gcal--ensure-token-aio))
-     (org-with-point-at (point)
-       ;; Post entry at point in org-agenda buffer.
-       (when (eq major-mode 'org-agenda-mode)
-         (let ((m (org-get-at-bol 'org-hd-marker)))
-           (set-buffer (marker-buffer m))
-           (goto-char (marker-position m))))
-       (end-of-line)
-       (org-gcal--back-to-heading)
-       (let* ((skip-import skip-import)
-              (skip-export skip-export)
-              (marker (point-marker))
-              (elem (org-element-headline-parser (point-max) t))
-              (smry (substring-no-properties
-                     (org-get-heading 'no-tags 'no-todo 'no-priority 'no-comment)))
-              (loc (org-entry-get (point) "LOCATION"))
-              (recurrence (org-entry-get (point) "recurrence"))
-              (event-id (org-gcal--get-id (point)))
-              (etag (org-entry-get (point) org-gcal-etag-property))
-              (managed (org-entry-get (point) org-gcal-managed-property))
-              (calendar-id
-               (org-entry-get (point) org-gcal-calendar-id-property)))
-         ;; Set ‘org-gcal-managed-property’ if not present.
-         (unless (and managed (member managed '("org" "gcal")))
-           (let ((x
-                  (if (and calendar-id event-id)
-                      org-gcal-managed-update-existing-mode
-                    org-gcal-managed-create-from-entry-mode)))
-             (org-entry-put (point) org-gcal-managed-property x)
-             (setq managed x)))
-         ;; Fill in Calendar ID if not already present.
-         (unless calendar-id
-           (setq calendar-id
-                 (completing-read "Calendar ID: "
-                                  (mapcar #'car org-gcal-file-alist)))
-           (org-entry-put (point) org-gcal-calendar-id-property calendar-id))
-         (when (equal managed "gcal")
-           (unless existing-mode
-             (setq existing-mode org-gcal-managed-post-at-point-update-existing))
-           (pcase existing-mode
-             ('never-push
-              (setq skip-export t))
-             ;; PROMPT and PROMPT-SYNC are handled identically here. When syncing
-             ;; PROMPT is mapped to NEVER-PUSH in the calling function, while
-             ;; PROMPT-SYNC is left unchanged.
-             ;; Only when manually running ‘org-gcal-post-at-point’ should PROMPT
-             ;; be seen here.
-             ((or 'prompt 'prompt-sync)
-              (unless (y-or-n-p (format "Push event to Google Calendar?\n\n%s\n\n"
-                                        smry))
-                (setq skip-export t)))
-             ('always-push nil)
-             (val
-              (user-error "Bad value %S of EXISTING-MODE passed to ‘org-gcal-post-at-point’. For valid values see ‘org-gcal-managed-post-at-point-update-existing’."
-                          val))))
-         ;; Read currently-present start and end times and description. Fill in a
-         ;; reasonable start and end time if either is missing.
-         (let* ((time-desc (org-gcal--get-time-and-desc))
-                (start (plist-get time-desc :start))
-                (end (plist-get time-desc :end))
-                (desc (plist-get time-desc :desc)))
-           (unless end
-             (let* ((start-time (or start (org-read-date 'with-time 'to-time)))
-                    (min-duration 5)
-                    (resolution 5)
-                    (duration-default
-                     (org-duration-from-minutes
-                      (max
-                       min-duration
-                       ;; Round up to the nearest multiple of ‘resolution’ minutes.
-                       (* resolution
-                          (ceiling
-                           (/ (- (org-duration-to-minutes
-                                  (or (org-element-property :EFFORT elem) "0:00"))
-                                 (org-clock-sum-current-item))
-                              resolution))))))
-                    (duration (read-from-minibuffer "Duration: " duration-default))
-                    (duration-minutes (org-duration-to-minutes duration))
-                    (duration-seconds (* 60 duration-minutes))
-                    (end-time (time-add start-time duration-seconds)))
-               (setq start (org-gcal--format-time2iso start-time)
-                     end (org-gcal--format-time2iso end-time))))
-           (when recurrence
-             (setq start nil end nil))
-           (aio-await
-            (org-gcal--post-event-aio
-             start end smry loc desc
-             calendar-id marker etag event-id
-             nil skip-import skip-export)))))
-     nil)))
+  (let ((marker (point-marker)))
+   (org-gcal--aio-wait-for-background-interactive
+    (aio-iter2-with-async
+      (aio-await (org-gcal--ensure-token-aio))
+      (org-with-point-at marker
+        ;; Post entry at point in org-agenda buffer.
+        (when (eq major-mode 'org-agenda-mode)
+          (let ((m (org-get-at-bol 'org-hd-marker)))
+            (set-buffer (marker-buffer m))
+            (goto-char (marker-position m))))
+        (end-of-line)
+        (org-gcal--back-to-heading)
+        (setf marker (point-marker))
+        (let* ((skip-import skip-import)
+               (skip-export skip-export)
+               (elem (org-element-headline-parser (point-max) t))
+               (smry (substring-no-properties
+                      (org-get-heading 'no-tags 'no-todo 'no-priority 'no-comment)))
+               (loc (org-entry-get (point) "LOCATION"))
+               (recurrence (org-entry-get (point) "recurrence"))
+               (event-id (org-gcal--get-id (point)))
+               (etag (org-entry-get (point) org-gcal-etag-property))
+               (managed (org-entry-get (point) org-gcal-managed-property))
+               (calendar-id
+                (org-entry-get (point) org-gcal-calendar-id-property)))
+          ;; Set ‘org-gcal-managed-property’ if not present.
+          (unless (and managed (member managed '("org" "gcal")))
+            (let ((x
+                   (if (and calendar-id event-id)
+                       org-gcal-managed-update-existing-mode
+                     org-gcal-managed-create-from-entry-mode)))
+              (org-entry-put (point) org-gcal-managed-property x)
+              (setq managed x)))
+          ;; Fill in Calendar ID if not already present.
+          (unless calendar-id
+            (setq calendar-id
+                  (completing-read "Calendar ID: "
+                                   (mapcar #'car org-gcal-file-alist)))
+            (org-entry-put (point) org-gcal-calendar-id-property calendar-id))
+          (when (equal managed "gcal")
+            (unless existing-mode
+              (setq existing-mode org-gcal-managed-post-at-point-update-existing))
+            (pcase existing-mode
+              ('never-push
+               (setq skip-export t))
+              ;; PROMPT and PROMPT-SYNC are handled identically here. When syncing
+              ;; PROMPT is mapped to NEVER-PUSH in the calling function, while
+              ;; PROMPT-SYNC is left unchanged.
+              ;; Only when manually running ‘org-gcal-post-at-point’ should PROMPT
+              ;; be seen here.
+              ((or 'prompt 'prompt-sync)
+               (unless (y-or-n-p (format "Push event to Google Calendar?\n\n%s\n\n"
+                                         smry))
+                 (setq skip-export t)))
+              ('always-push nil)
+              (val
+               (user-error "Bad value %S of EXISTING-MODE passed to ‘org-gcal-post-at-point’. For valid values see ‘org-gcal-managed-post-at-point-update-existing’."
+                           val))))
+          ;; Read currently-present start and end times and description. Fill in a
+          ;; reasonable start and end time if either is missing.
+          (let* ((time-desc (org-gcal--get-time-and-desc))
+                 (start (plist-get time-desc :start))
+                 (end (plist-get time-desc :end))
+                 (desc (plist-get time-desc :desc)))
+            (unless end
+              (let* ((start-time (or start (org-read-date 'with-time 'to-time)))
+                     (min-duration 5)
+                     (resolution 5)
+                     (duration-default
+                      (org-duration-from-minutes
+                       (max
+                        min-duration
+                        ;; Round up to the nearest multiple of ‘resolution’ minutes.
+                        (* resolution
+                           (ceiling
+                            (/ (- (org-duration-to-minutes
+                                   (or (org-element-property :EFFORT elem) "0:00"))
+                                  (org-clock-sum-current-item))
+                               resolution))))))
+                     (duration (read-from-minibuffer "Duration: " duration-default))
+                     (duration-minutes (org-duration-to-minutes duration))
+                     (duration-seconds (* 60 duration-minutes))
+                     (end-time (time-add start-time duration-seconds)))
+                (setq start (org-gcal--format-time2iso start-time)
+                      end (org-gcal--format-time2iso end-time))))
+            (when recurrence
+              (setq start nil end nil))
+            (aio-await
+             (org-gcal--post-event-aio
+              start end smry loc desc
+              calendar-id marker etag event-id
+              nil skip-import skip-export)))))
+      nil))))
 
 ;;;###autoload
 (defun org-gcal-delete-at-point (&optional clear-gcal-info)
