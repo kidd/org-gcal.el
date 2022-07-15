@@ -741,7 +741,7 @@ AIO version: ‘org-gcal--sync-request-events-aio'"
 
 AIO version: ‘org-gcal--sync-request-events-aio'"
   (aio-await
-   (org-gcal--aio-request
+   (org-gcal--aio-request-catch-error
     (org-gcal-events-url calendar-id)
     :type "GET"
     :headers
@@ -794,7 +794,7 @@ AIO version: ‘org-gcal--sync-request-instances-aio'"
     (calendar-id event-id up-time down-time page-token)
   "Request instances of recurring event EVENT-ID on CALENDAR-ID."
   (aio-await
-   (org-gcal--aio-request
+   (org-gcal--aio-request-catch-error
     (org-gcal-instances-url calendar-id event-id)
     :type "GET"
     :headers
@@ -2664,7 +2664,7 @@ Returns an ‘aio-promise’ for a ‘request-response' object."
   (let* ((a-token (org-gcal--get-access-token calendar-id))
          (response
           (aio-await
-           (org-gcal--aio-request
+           (org-gcal--aio-request-catch-error
             (concat
              (org-gcal-events-url calendar-id)
              (concat "/" event-id))
