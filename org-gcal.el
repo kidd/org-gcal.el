@@ -302,15 +302,20 @@ See: https://developers.google.com/calendar/v3/reference/events/insert."
   :group 'org-gcal
   :type 'string)
 
+(defconst org-gcal-api-url "https://www.googleapis.com/calendar/v3"
+  "URL relative to which Google Calendar API methods are called.")
+
 (defun org-gcal-events-url (calendar-id)
   "URL used to request access to events on calendar CALENDAR-ID."
-  (format "https://www.googleapis.com/calendar/v3/calendars/%s/events"
+  (format "%s/calendars/%s/events"
+          org-gcal-api-url
           (url-hexify-string calendar-id)))
 
 (defun org-gcal-instances-url (calendar-id event-id)
   "URL used to request access to instances of recurring events.
 Returns a URL for recurrent event EVENT-ID on calendar CALENDAR-ID."
-  (format "https://www.googleapis.com/calendar/v3/calendars/%s/events/%s/instances"
+  (format "%s/calendars/%s/events/%s/instances"
+          org-gcal-api-url
           (url-hexify-string calendar-id)
           (url-hexify-string event-id)))
 
@@ -2159,23 +2164,6 @@ Returns a promise to wait for completion."
         (when delete-error
           (error "org-gcal-delete-at-point: for %s %s: error: %S"
                  calendar-id event-id delete-error)))))))
-
-(defun org-gcal-request-authorization ()
-  "Request OAuth authorization at AUTH-URL by launching `browse-url'.
-  CLIENT-ID is the client id provided by the provider.
-  It returns the code provided by the service."
-  (let* ((gcal-auth-url
-          (concat org-gcal-auth-url
-                  "?client_id=" (url-hexify-string org-gcal-client-id)
-                  "&response_type=code"
-                  "&redirect_uri=" (url-hexify-string "urn:ietf:wg:oauth:2.0:oob")
-                  "&scope=" (url-hexify-string org-gcal-resource-url)))
-         (prompt
-          (format
-           "Please visit (if it doesn't open automatically): %s\n\nEnter the code your browser displayed:"
-           gcal-auth-url)))
-    (browse-url gcal-auth-url)
-    (read-string prompt)))
 
 (defun org-gcal--refresh-token (calendar-id)
   "Refresh OAuth access for CALENDAR-ID.
