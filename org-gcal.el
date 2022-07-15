@@ -3160,33 +3160,44 @@ AIO-REQUEST as the error symbol and the ‘request-response’ object as the dat
 The meaning of URL and the other SETTINGS are the same as for ‘request’, except that
 the :success, :error, :complete, and :status-code arguments cannot be used, since these
 keys are used by this function to set up the promise resolution."
-  (let ((promise (aio-promise)))
+  (let ((promise (aio-promise))
+        resp)
     (prog1 promise
       (condition-case error
           (progn
             (dolist (key '(:success :error :complete :status-code))
               (when (plist-get settings key)
                 (user-error "Cannot use %S in arguments to ‘org-gcal--aio-request’ - use the promise returned to handle response.")))
-            (apply #'request url
-                   :success
-                   ;; Not sure why a normal lambda doesn’t capture PROMISE (or
-                   ;; RESPONSE) below, but ‘apply-partially’ works to capture.
-                   (apply-partially
-                    (cl-defun org-gcal--aio-request--success (promise &key response &allow-other-keys)
-                      (aio-resolve
-                       promise
-                       (apply-partially #'identity response)))
-                    promise)
-                   :error
-                   (apply-partially
-                    (cl-defun org-gcal--aio-request--error (promise &key response &allow-other-keys)
-                      (aio-resolve promise
-                                   (apply-partially
-                                    (defun org-gcal--aio-request--error-resolve (response)
-                                      (signal 'org-gcal--aio-request response))
-                                    response)))
-                    promise)
-                   settings))
+            (setq resp
+                  (apply #'request url
+                         :success
+                         ;; Not sure why a normal lambda doesn’t capture PROMISE (or
+                         ;; RESPONSE) below, but ‘apply-partially’ works to capture.
+                         (apply-partially
+                          (cl-defun org-gcal--aio-request--success (promise &key response &allow-other-keys)
+                            (aio-resolve
+                             promise
+                             (apply-partially #'identity response)))
+                          promise)
+                         :error
+                         (apply-partially
+                          (cl-defun org-gcal--aio-request--error (promise &key response &allow-other-keys)
+                            (aio-resolve promise
+                                         (apply-partially
+                                          (defun org-gcal--aio-request--error-resolve (response)
+                                            (signal 'org-gcal--aio-request response))
+                                          response)))
+                          promise)
+                         settings))
+            (aio-listen promise
+                        (apply-partially
+                         (cl-defun org-gcal--aio-request--cancel (resp value-function)
+                           (condition-case-no-debug err
+                               (funcall value-function)
+                             (aio-cancel
+                              (request-abort resp))
+                             (t nil)))
+                         resp)))
         (error (aio-resolve promise
                             (lambda ()
                               (signal (car error) (cdr error)))))))))
