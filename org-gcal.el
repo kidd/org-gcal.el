@@ -25,10 +25,7 @@
 
 ;;; Commentary:
 ;;
-;; Put the org-gcal.el to your
-;; load-path.
-;; Add to .emacs:
-;; (require 'org-gcal)
+;; See README.org in this package.
 ;;
 ;;; Changelog:
 ;; 2014-01-03 Initial release.
