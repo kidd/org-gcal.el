@@ -1511,8 +1511,7 @@ Unlike ‘org-gcal-sync-buffer’, this will not push any changes to Google
 Calendar. For SILENT and FILTER-DATE see ‘org-gcal-sync-buffer’."
   (interactive)
   (org-gcal--aio-wait-for-background-interactive
-   (aio-iter2-with-async
-    (aio-await (org-gcal-sync-buffer-aio t silent filter-date)))))
+   (org-gcal-sync-buffer-aio t silent filter-date)))
 
 
 (defvar org-gcal-debug nil)
