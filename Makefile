@@ -27,7 +27,8 @@ compile: $(SRC) elpa
 
 test: $(SRC) $(TEST) elpa
 	$(CASK) exec ert-runner -L $(THIS_MAKEFILE_DIR) \
-		$(foreach test,$(TEST),$(addprefix $(THIS_MAKEFILE_DIR)/,$(test)))
+		$(foreach test,$(TEST),$(addprefix $(THIS_MAKEFILE_DIR)/,$(test))) \
+		</dev/null  # Make any prompts for user input fail during tests
 
 # Vendor aio-iter2 from my fork until aio-iter2 is added to MELPA.
 update-aio-iter2:
