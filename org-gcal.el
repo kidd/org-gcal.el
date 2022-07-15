@@ -345,7 +345,20 @@ pair will be removed instead of set."
   `(alist-get ,key org-gcal--sync-tokens nil ,remove? #'equal))
 
 (defmacro org-gcal--aio-wait-for-background-interactive (promise &optional interactive)
-  "If INTERACTIVE or the calling function is called interactively, run PROMISE in background. Otherwise, just return PROMISE."
+  "Allow PROMISE to be called from either interactive or aio context.
+
+If INTERACTIVE or the calling function is called interactively, run PROMISE (an
+‘aio-promise’) in background. Otherwise, just return PROMISE.
+
+For an example of its use, see ‘org-gcal-fetch-buffer-aio’:
+
+    (defun org-gcal-fetch-buffer-aio (&optional silent filter-date)
+      (interactive)
+      (org-gcal--aio-wait-for-background-interactive
+        (org-gcal-sync-buffer-aio t silent filter-date)))
+
+This allows ‘org-gcal-fetch-buffer-aio’ to be either called interactively, or to
+be called in an aio context by other code."
   `(if (or ,interactive (called-interactively-p 'any))
        (org-gcal--aio-wait-for-background ,promise)
      ,promise))
@@ -737,9 +750,7 @@ AIO version: ‘org-gcal--sync-request-events-aio'"
 
 (aio-iter2-defun org-gcal--sync-request-events-aio
   (calendar-id page-token up-time down-time)
-  "Request events on CALENDAR-ID, using PAGE-TOKEN if present.
-
-AIO version: ‘org-gcal--sync-request-events-aio'"
+  "Request events on CALENDAR-ID, using PAGE-TOKEN if present."
   (aio-await
    (org-gcal--aio-request-catch-error
     (org-gcal-events-url calendar-id)
@@ -1404,7 +1415,13 @@ AIO version: see ‘org-gcal--sync-buffer-inner-aio’."
 
 (aio-iter2-defun org-gcal--sync-buffer-inner-aio
   (skip-export _silent filter-date filter-managed marker)
-  "Inner loop of ‘org-gcal-sync-buffer-aio’. Returns a promise to wait for completion."
+  "Inner loop of ‘org-gcal-sync-buffer-aio’.
+Returns a promise to wait for completion.
+
+For SKIP-EXPORT, _SILENT, FILTER-DATE, and FILTER-MANAGED see
+‘org-gcal-sync-buffer-aio’. MARKER is located at ‘point-min-marker’ when the
+function is called, but is updated inside this function to keep track of
+progress through the buffer."
   (let* ((marker marker))
     (while marker
       (org-gcal--with-point-at-no-widen marker
