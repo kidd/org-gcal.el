@@ -1482,8 +1482,8 @@ AIO version: see ‘org-gcal--sync-buffer-inner-aio’."
                               nil skip-export
                               (org-gcal--sync-get-update-existing)))))
                       (error
-                       (message "org-gcal-sync-buffer: event %S: error: %S"
-                                time-desc err)))
+                       (message "org-gcal-sync-buffer: at %S event %S: error: %s"
+                                marker-for-post time-desc err)))
                     marker)))
             nil)))))
   nil)
@@ -1900,8 +1900,8 @@ For valid values of EXISTING-MODE see
 Returns a promise to wait for completion."
   (interactive)
   (let ((marker (point-marker)))
-   (org-gcal--aio-wait-for-background-interactive
-    (aio-iter2-with-async
+    (org-gcal--aio-wait-for-background-interactive
+     (aio-iter2-with-async
       (aio-await (org-gcal--ensure-token-aio))
       (org-with-point-at marker
         ;; Post entry at point in org-agenda buffer.
@@ -1915,9 +1915,17 @@ Returns a promise to wait for completion."
         (let* ((skip-import skip-import)
                (skip-export skip-export)
                (elem (org-element-headline-parser (point-max) t))
-               (smry (substring-no-properties
-                      (org-get-heading 'no-tags 'no-todo 'no-priority 'no-comment)))
+               (smry (org-gcal--headline))
                (loc (org-entry-get (point) "LOCATION"))
+               (source
+                (when-let ((link-string
+                            (or (org-entry-get (point) "link")
+                                (nth 0
+                                     (org-entry-get-multivalued-property
+                                      (point) "ROAM_REFS")))))
+                  (org-gcal--source-from-link-string link-string)))
+               (transparency (or (org-entry-get (point) "TRANSPARENCY")
+                                 org-gcal-default-transparency))
                (recurrence (org-entry-get (point) "recurrence"))
                (event-id (org-gcal--get-id (point)))
                (etag (org-entry-get (point) org-gcal-etag-property))
@@ -1935,8 +1943,15 @@ Returns a promise to wait for completion."
           ;; Fill in Calendar ID if not already present.
           (unless calendar-id
             (setq calendar-id
-                  (completing-read "Calendar ID: "
-                                   (mapcar #'car org-gcal-file-alist)))
+                  ;; Completes read with prompts like "CALENDAR-FILE (CALENDAR-ID)",
+                  ;; and then uses ‘replace-regexp-in-string’ to extract just
+                  ;; CALENDAR-ID.
+                  (replace-regexp-in-string
+                   ".*(\\(.*?\\))$" "\\1"
+                   (completing-read "Calendar ID: "
+                                    (mapcar
+                                     (lambda (x) (format "%s (%s)" (cdr x) (car x)))
+                                     org-gcal-fetch-file-alist))))
             (org-entry-put (point) org-gcal-calendar-id-property calendar-id))
           (when (equal managed "gcal")
             (unless existing-mode
@@ -1988,8 +2003,8 @@ Returns a promise to wait for completion."
               (setq start nil end nil))
             (aio-await
              (org-gcal--post-event-aio
-              start end smry loc desc
-              calendar-id marker etag event-id
+              start end smry loc source desc
+              calendar-id marker transparency etag event-id
               nil skip-import skip-export)))))
       nil))))
 
@@ -2664,9 +2679,12 @@ Returns an ‘aio-promise’ for a ‘request-response' object."
          ((not (eq error-thrown nil))
           (org-gcal--notify
            (concat "Status code: " (number-to-string status-code))
-           (pp-to-string error-thrown))
-          (error "org-gcal--get-event: Got error %S for %s %s: %S"
-                 status-code calendar-id event-id error-thrown))
+           (format "%s %s: %s"
+                   calendar-id
+                   event-id
+                   (pp-to-string error-thrown)))
+          (error "org-gcal--get-event-aio: Got error %S for %s %s: %S"
+           status-code calendar-id event-id error-thrown))
          ;; Fetch was successful.
          (t response))))
 
@@ -2831,7 +2849,7 @@ Returns a ‘aio-promise’ object that can be used to wait for completion."
                     (concat
                      (org-gcal-events-url calendar-id)
                      (when event-id
-                       (concat "/" event-id)))
+                       (concat "/" (url-hexify-string event-id))))
                     :type (cond
                            (skip-export "GET")
                            (event-id "PATCH")
@@ -2843,7 +2861,9 @@ Returns a ‘aio-promise’ object that can be used to wait for completion."
                               (cond
                                ((null etag) nil)
                                ((null event-id)
-                                (error "Event cannot have ETag set when event ID absent"))
+                                (error "org-gcal--post-event-aio: %s %s %s: %s"
+                                       (point-marker) calendar-id event-id
+                                       "Event cannot have ETag set when event ID absent"))
                                (t
                                 `(("If-Match" . ,etag)))))
                     :parser 'org-gcal--json-read
@@ -2882,8 +2902,8 @@ Returns a ‘aio-promise’ object that can be used to wait for completion."
        "Received HTTP 401"
        "OAuth token expired. Now trying to refresh-token")
       (aio-await (org-gcal--refresh-token-aio calendar-id))
-      (aio-await (org-gcal--post-event-aio start end smry loc desc calendar-id
-                                           marker etag event-id nil
+      (aio-await (org-gcal--post-event-aio start end smry loc source desc calendar-id
+                                           marker etag transparency event-id nil
                                            skip-import skip-export)))
      ;; ETag on current entry is stale. This means the event on the
      ;; server has been updated. In that case, update the event using
