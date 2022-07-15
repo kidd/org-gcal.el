@@ -33,6 +33,8 @@
   (setq org-gcal-client-id "test_client_id"
         org-gcal-client-secret "test_client_secret"))
 
+(require 'aio)
+(require 'aio-iter2)
 (require 'org-gcal)
 (require 'cl-lib)
 (require 'el-mock)
@@ -120,6 +122,12 @@ always located at the beginning of the buffer."
      (t
       (user-error "org-gcal-test--title-to-string: unhandled type for :title prop of elem %S"
                   elem)))))
+
+(defun org-gcal-test--aio-resolve-to (result)
+  "Create an ‘aio-promise’ that immediately resolves to RESULT."
+  (let ((promise (aio-promise)))
+    (prog1 promise
+      (aio-resolve promise (lambda () result)))))
 
 (defconst org-gcal-test-event
   (org-gcal-test--json-read-string org-gcal-test-event-json))
@@ -607,6 +615,48 @@ Second paragraph
     (let ((org-gcal-managed-post-at-point-update-existing 'always-push))
       (org-gcal-post-at-point)))))
 
+(ert-deftest org-gcal-test--post-at-point-aio-basic ()
+  "Verify basic case of ‘org-gcal-post-to-point-aio’."
+  (org-gcal-test--with-temp-buffer
+      "\
+* My event summary
+:PROPERTIES:
+:ETag:     \"12344321\"
+:LOCATION: Foobar's desk
+:link: [[https://google.com][Google]]
+:TRANSPARENCY: opaque
+:calendar-id: foo@foobar.com
+:entry-id:       foobar1234/foo@foobar.com
+:END:
+:org-gcal:
+<2019-10-06 Sun 17:00-21:00>
+
+My event description
+
+Second paragraph
+:END:
+"
+    (with-mock
+     (stub org-gcal--time-zone => '(0 "UTC"))
+     (stub org-generic-id-add-location => nil)
+     (stub org-gcal--ensure-token-aio => (org-gcal-test--aio-resolve-to nil))
+     (stub org-gcal-request-token-aio => (org-gcal-test--aio-resolve-to nil))
+    ;; (mock (org-gcal--post-event-aio
+    ;;        "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
+    ;;        "My event summary" "Foobar's desk"
+    ;;        `((url . "https://google.com") (title . "Google"))
+    ;;        "My event description\n\nSecond paragraph"
+    ;;        "foo@foobar.com"
+    ;;        * "opaque" "\"12344321\"" "foobar1234"
+    ;;        * * *)
+    ;;       => (org-gcal-test--aio-resolve-to nil))
+     (aio-wait-for
+      (aio-iter2-with-async
+       (let ((org-gcal-managed-post-at-point-update-existing 'always-push))
+        (org-back-to-heading)
+        (message "About to call org-gcal-post-at-point-aio")
+        (aio-await (org-gcal-post-at-point-aio))))))))
+
 (ert-deftest org-gcal-test--post-at-point-api-response ()
   "Verify that ‘org-gcal-post-to-point’ updates an event using the data
 returned from the Google Calendar API."
@@ -680,6 +730,81 @@ My event description
 
 Second paragraph
 "))))))))
+
+(ert-deftest org-gcal-test--post-at-point-aio-api-response ()
+  "Verify that ‘org-gcal-post-to-point’ updates an event using the data
+returned from the Google Calendar API."
+  (org-gcal-test--with-temp-buffer
+      "\
+* Original summary
+:PROPERTIES:
+:ETag:     \"12344321\"
+:LOCATION: Original location
+:link: [[https://yahoo.com][Yahoo!]]
+:TRANSPARENCY: transparent
+:calendar-id: foo@foobar.com
+:entry-id:       foobar1234/foo@foobar.com
+:END:
+:org-gcal:
+<2021-03-05 Fri 12:00-14:00>
+
+Original description
+
+Original second paragraph
+:END:
+"
+    (defvar update-entry-hook-called nil)
+    (setq update-entry-hook-called nil)
+    (let (org-gcal-after-update-entry-functions)
+      (defun update-entry-hook (calendar-id event update-mode)
+        (message "update-entry-hook %S %S %S" calendar-id event update-mode)
+        (setq update-entry-hook-called t))
+      (add-hook 'org-gcal-after-update-entry-functions #'update-entry-hook)
+      (with-mock
+        (stub org-gcal--time-zone => '(0 "UTC"))
+        (stub org-generic-id-add-location => nil)
+        (stub org-gcal-request-token-aio => (org-gcal-test--aio-resolve-to nil))
+        (stub org-gcal--ensure-token-aio => (org-gcal-test--aio-resolve-to nil))
+        (stub request-deferred =>
+              (org-gcal-test--aio-resolve-to
+               (make-request-response
+                :status-code 200
+                :data org-gcal-test-event)))
+        (let ((org-gcal-managed-post-at-point-update-existing 'always-push))
+          (aio-iter2-with-async
+            (aio-await (org-gcal-post-at-point))
+            (org-back-to-heading)
+            (should (equal update-entry-hook-called t))
+            (let ((elem (org-element-at-point)))
+              (should (equal (org-gcal-test--title-to-string elem)
+                             "My event summary"))
+              (should (equal (org-element-property :ETAG elem)
+                             "\"12344321\""))
+              (should (equal (org-element-property :LOCATION elem)
+                             "Foobar's desk"))
+              (should (equal (org-element-property :LINK elem)
+                             "[[https://google.com][Google]]"))
+              (should (equal (org-element-property :TRANSPARENCY elem)
+                             "opaque"))
+              (should (equal (org-element-property :CALENDAR-ID elem)
+                             "foo@foobar.com"))
+              (should (equal (org-element-property :ENTRY-ID elem)
+                             "foobar1234/foo@foobar.com")))
+            ;; Check contents of "org-gcal" drawer
+            (re-search-forward ":org-gcal:")
+            (let ((elem (org-element-at-point)))
+              (should (equal (org-element-property :drawer-name elem)
+                             "org-gcal"))
+              (should (equal (buffer-substring-no-properties
+                              (org-element-property :contents-begin elem)
+                              (org-element-property :contents-end elem))
+                             "\
+<2019-10-06 Sun 17:00-21:00>
+
+My event description
+
+Second paragraph
+")))))))))
 
 (ert-deftest org-gcal-test--post-at-point-managed-update-existing-gcal ()
   "Verify ‘org-gcal-post-at-point’ with ‘org-gcal-managed-update-existing-mode’
@@ -1307,3 +1432,7 @@ under another heading in the same file."
 ;;; - There are actually no org-mode tests for this.
 ;;; - Set ‘org-id-locations’ (a hash table). This maps each ID to the file in
 ;;;   which the ID is found, so a temp file (not just a temp buffer) is needed.
+
+(provide 'org-gcal-test)
+
+;;; org-gcal-test.el ends here

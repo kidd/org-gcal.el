@@ -1905,10 +1905,12 @@ Returns a promise to wait for completion."
       (aio-await (org-gcal--ensure-token-aio))
       (org-with-point-at marker
         ;; Post entry at point in org-agenda buffer.
+        (message "marker %S" marker)
+        (message "buffer\n\n%s" (buffer-string))
         (when (eq major-mode 'org-agenda-mode)
-          (let ((m (org-get-at-bol 'org-hd-marker)))
-            (set-buffer (marker-buffer m))
-            (goto-char (marker-position m))))
+              (let ((m (org-get-at-bol 'org-hd-marker)))
+                (set-buffer (marker-buffer m))
+                (goto-char (marker-position m))))
         (end-of-line)
         (org-gcal--back-to-heading)
         (setf marker (point-marker))
@@ -2001,6 +2003,7 @@ Returns a promise to wait for completion."
                       end (org-gcal--format-time2iso end-time))))
             (when recurrence
               (setq start nil end nil))
+            (message "About to call org-gcal--post-event-aio")
             (aio-await
              (org-gcal--post-event-aio
               start end smry loc source desc
