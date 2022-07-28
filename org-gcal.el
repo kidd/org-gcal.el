@@ -172,14 +172,14 @@ This is the value set on events fetched from a calendar by ‘org-gcal-sync’ a
 
 Values:
 
-- “org”: Event is intended to be managed primarily by org-gcal. These events
+- “org”: Event is intended to be managed primarily by org-gcal.  These events
   will be pushed to Google Calendar by ‘org-gcal-sync’, ‘org-gcal-sync-buffer’,
-  and ‘org-gcal-post-at-point’ if they have been modified in the Org file. If
+  and ‘org-gcal-post-at-point’ if they have been modified in the Org file.  If
   the ETag is out of sync with Google Calendar, the Org headline will still be
   updated from Google Calendar.
-- “gcal”: Event is intended to be managed primarily by org-gcal. These events
+- “gcal”: Event is intended to be managed primarily by org-gcal.  These events
   will not be pushed to Google Calendar by bulk update functions like
-  ‘org-gcal-sync’, ‘org-gcal-sync-buffer’. When running
+  ‘org-gcal-sync’, ‘org-gcal-sync-buffer’.  When running
   ‘org-gcal-post-at-point’, the user will be prompted to approve pushing the
   event by default."
   :group 'org-gcal
@@ -204,8 +204,8 @@ Values: see ‘org-gcal-managed-newly-fetched-mode’."
   "Default value of ‘org-gcal-managed-property’ when creating event from entry.
 
 This is the value set when ‘org-gcal-post-at-point’ creates a Google Calendar
-event from an Org-mode entry. This is used when ‘org-gcal-calendar-id-property’
-or ‘org-gcal-entry-id-property’ is missing from an entry. If these are present,
+event from an Org-mode entry.  This is used when ‘org-gcal-calendar-id-property’
+or ‘org-gcal-entry-id-property’ is missing from an entry.  If these are present,
 ‘org-gcal-managed-update-existing-mode’ is used instead.
 
 Values: see ‘org-gcal-managed-newly-fetched-mode’."
@@ -241,7 +241,7 @@ Values: see ‘org-gcal-managed-newly-fetched-mode’."
 (defcustom org-gcal-after-update-entry-functions nil
   "List of functions to run just before ‘org-gcal--update-entry’ returns.
 
-This is the function called when an event is created, updated, or deleted. Each
+This is the function called when an event is created, updated, or deleted.  Each
 function in the list is called with the following arguments:
 
 - CALENDAR-ID: the calendar ID of the event, as a string.
@@ -414,7 +414,7 @@ For overall description, see that.
 Export entries modified locally to the calendar unless
 SKIP-EXPORT.  Set SILENT to non-nil to inhibit notifications."
   (when org-gcal--sync-lock
-    (user-error "Org-gcal sync locked. If a previous sync has failed, call ‘org-gcal--sync-unlock’ to reset the lock and try again"))
+    (user-error "Org-gcal sync locked.  If a previous sync has failed, call ‘org-gcal--sync-unlock’ to reset the lock and try again"))
   (org-gcal--sync-lock)
   (org-generic-id-update-id-locations org-gcal-entry-id-property)
   (aio-await (org-gcal--ensure-token-aio))
@@ -502,7 +502,7 @@ AIO version: ‘org-gcal--sync-calendar-aio’."
 
 (aio-iter2-defun org-gcal--sync-calendar-aio
   (calendar-id-file skip-export silent up-time down-time)
-  "Sync events for CALENDAR-ID-FILE
+  "Sync events for CALENDAR-ID-FILE.
 
 CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see.
 
@@ -573,7 +573,7 @@ AIO version: ‘org-gcal--sync-calendar-events-aio'"
 (aio-iter2-defun org-gcal--sync-calendar-events-aio
   (calendar-id-file skip-export silent page-token up-time down-time
                     parent-events)
-  "Sync events for CALENDAR-ID-FILE
+  "Sync events for CALENDAR-ID-FILE.
 
 CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see."
   (let*
@@ -1177,7 +1177,7 @@ Any parent recurring events are appended in-place to the list PARENT-EVENTS."
 (defun org-gcal--sync-update-entries (calendar-id entries skip-export)
   "Update headlines given by ‘org-gcal--event-entry’ ENTRIES.
 
-Find already retrieved entries and update them. This will update events that
+Find already retrieved entries and update them.  This will update events that
 have been moved from the default fetch file.  CALENDAR-ID is defined in
 ‘org-gcal--sync-inner'.
 
@@ -1210,7 +1210,7 @@ AIO version: ‘org-gcal--sync-update-entries-aio'"
 (aio-iter2-defun org-gcal--sync-update-entries-aio (calendar-id entries skip-export)
   "Update headlines given by ‘org-gcal--event-entry’ ENTRIES.
 
-Find already retrieved entries and update them. This will update events that
+Find already retrieved entries and update them.  This will update events that
 have been moved from the default fetch file.  CALENDAR-ID is defined in
 ‘org-gcal--sync-inner'."
   (dolist (entry entries)
@@ -1265,18 +1265,17 @@ AIO version: ‘org-gcal-fetch-aio’."
                                        filter-managed)
   "Sync entries with Calendar events in currently-visible portion of buffer.
 
-Updates events on the server unless SKIP-EXPORT is set. In this case, events
-modified on the server will overwrite entries in the buffer.
-Set SILENT to non-nil to inhibit notifications.
-Set FILTER-DATE to only update events scheduled for later than
-‘org-gcal-up-days' and earlier than ‘org-gcal-down-days'.
-Set FILTER-MANAGED to only update events with ‘org-gcal-managed-property’ set
-to “org”.
+Updates events on the server unless SKIP-EXPORT is set.  In this case, events
+modified on the server will overwrite entries in the buffer.  Set SILENT to
+non-nil to inhibit notifications.  Set FILTER-DATE to only update events
+scheduled for later than ‘org-gcal-up-days' and earlier than
+‘org-gcal-down-days'.  Set FILTER-MANAGED to only update events with
+‘org-gcal-managed-property’ set to “org”.
 
 AIO version: see ‘org-gcal-sync-buffer-aio'."
   (interactive)
   (when org-gcal--sync-lock
-    (user-error "Org-gcal sync locked. If a previous sync has failed, call ‘org-gcal--sync-unlock’ to reset the lock and try again"))
+    (user-error "Org-gcal sync locked.  If a previous sync has failed, call ‘org-gcal--sync-unlock’ to reset the lock and try again"))
   (org-gcal--sync-lock)
   (let*
       ((name (or (buffer-file-name) (buffer-name))))
@@ -1310,15 +1309,14 @@ From Lisp code, call ‘org-gcal-sync-buffer-aio-promise’ instead."
   "Implementation of ‘org-gcal-sync-buffer-aio’.
 For overall description, see that.
 
-Updates events on the server unless SKIP-EXPORT is set. In this case, events
-modified on the server will overwrite entries in the buffer.
-Set SILENT to non-nil to inhibit notifications.
-Set FILTER-DATE to only update events scheduled for later than
-‘org-gcal-up-days' and earlier than ‘org-gcal-down-days'.
-Set FILTER-MANAGED to only update events with ‘org-gcal-managed-property’ set
-to “org”."
+Updates events on the server unless SKIP-EXPORT is set.  In this case, events
+modified on the server will overwrite entries in the buffer.  Set SILENT to
+non-nil to inhibit notifications.  Set FILTER-DATE to only update events
+scheduled for later than ‘org-gcal-up-days' and earlier than
+‘org-gcal-down-days'.  Set FILTER-MANAGED to only update events with
+‘org-gcal-managed-property’ set to “org”."
   (when org-gcal--sync-lock
-    (user-error "Org-gcal sync locked. If a previous sync has failed, call ‘org-gcal--sync-unlock’ to reset the lock and try again"))
+    (user-error "Org-gcal sync locked.  If a previous sync has failed, call ‘org-gcal--sync-unlock’ to reset the lock and try again"))
   (org-gcal--sync-lock)
   (org-gcal--ensure-token)
   (unwind-protect
@@ -1561,7 +1559,7 @@ of progress through the buffer."
   "Fetch each change to events in the currently-visible portion of the buffer.
 
 Unlike ‘org-gcal-sync-buffer’, this will not push any changes to Google
-Calendar. For SILENT and FILTER-DATE see ‘org-gcal-sync-buffer’.
+Calendar.  For SILENT and FILTER-DATE see ‘org-gcal-sync-buffer’.
 
 AIO version: ‘org-gcal-fetch-buffer-aio’."
   (interactive)
@@ -1572,7 +1570,7 @@ AIO version: ‘org-gcal-fetch-buffer-aio’."
   "Fetch each change to events in the currently-visible portion of the buffer.
 
 Unlike ‘org-gcal-sync-buffer’, this will not push any changes to Google
-Calendar. For SILENT and FILTER-DATE see ‘org-gcal-sync-buffer’."
+Calendar.  For SILENT and FILTER-DATE see ‘org-gcal-sync-buffer’."
   (interactive)
   (org-gcal--aio-wait-for-background
    (org-gcal-sync-buffer-aio-promise t silent filter-date)))
@@ -1649,8 +1647,8 @@ filter returns NIL, discard the item."
   "Return all values for PROPERTY in entry at point or marker POM.
 Works like ‘org--property-local-values’, except that if multiple values of a
 property whose key doesn’t contain a ‘+’ sign are present, this function will
-return all of them. In particular, we wish to retrieve all local values of the
-\"ID\" property. LITERAL-NIL also works the same way.
+return all of them.  In particular, we wish to retrieve all local values of the
+\"ID\" property.  LITERAL-NIL also works the same way.
 
 Does not preserve point."
   (org-with-point-at pom
@@ -1926,7 +1924,7 @@ AIO version: ‘org-gcal-post-at-point-aio'."
              (setq skip-export t)))
           ('always-push nil)
           (val
-           (user-error "Bad value %S of EXISTING-MODE passed to ‘org-gcal-post-at-point’. For valid values see ‘org-gcal-managed-post-at-point-update-existing’"
+           (user-error "Bad value %S of EXISTING-MODE passed to ‘org-gcal-post-at-point’.  For valid values see ‘org-gcal-managed-post-at-point-update-existing’"
                        val))))
       ;; Read currently-present start and end times and description. Fill in a
       ;; reasonable start and end time if either is missing.
@@ -2427,7 +2425,7 @@ local timestamp."
 (defun org-gcal--format-org2iso (year mon day &optional hour min tz)
   "Convert an Org-element timestamp to a ISO 8601 timestamp string.
 
-YEAR, MON, DAY, HOUR, and MIN are integers. It is assumed that you use
+YEAR, MON, DAY, HOUR, and MIN are integers.  It is assumed that you use
 ‘plist-get’ to retrieve these from an Org-element timestamp, using either the
 :year-start, :month-start, :day-start, :hour-start, :minute-start keys, or the
 equivalent keys replacing “start” with “end”.
@@ -2480,8 +2478,8 @@ LOCAL-TIMEZONE."
   "Update the entry at the current heading with information from EVENT.
 
 EVENT is parsed from the Calendar API JSON response using ‘org-gcal--json-read’.
-CALENDAR-ID must be passed as well. Point must be located on an Org-mode heading
-line or an error will be thrown. Point is not preserved.
+CALENDAR-ID must be passed as well.  Point must be located on an Org-mode
+heading line or an error will be thrown.  Point is not preserved.
 
 If UPDATE-MODE is passed, then the functions in
 ‘org-gcal-after-update-entry-functions' are called in order with the same
@@ -2700,9 +2698,8 @@ timezone."
                   (buffer-name))))
 
 (defun org-gcal--get-event (calendar-id event-id)
-  "\
-Retrieves a Google Calendar event given a CALENDAR-ID and EVENT-ID. If the
-access token A-TOKEN is not specified, it is loaded from the token file.
+  "Retrieve a Google Calendar event given a CALENDAR-ID and EVENT-ID.
+If the access token A-TOKEN is not specified, it is loaded from the token file.
 
 Returns a ‘deferred’ function that on success returns a ‘request-response‘
 object.
@@ -2960,14 +2957,14 @@ AIO version: ‘org-gcal--post-event-aio’."
         (set-marker marker nil)))))
 
 (aio-iter2-defun org-gcal--post-event-aio (start end smry loc source desc calendar-id marker transparency &optional etag event-id a-token skip-import skip-export)
-  "Creates or updates an event on Google Calendar.
+  "Create or update an event on Google Calendar.
 
 The event with EVENT-ID is modified on CALENDAR-ID with attributes START, END,
-SMRY, LOC, DESC. The Org buffer and point from which the event is read is given
+SMRY, LOC, DESC.  The Org buffer and point from which the event is read is given
 by MARKER.
 
 If ETAG is provided, it is used to retrieve the event data from the server and
-overwrite the event at MARKER if the event has changed on the server. MARKER is
+overwrite the event at MARKER if the event has changed on the server.  MARKER is
 destroyed by this function.
 
 Returns a ‘aio-promise’ object that can be used to wait for completion."
@@ -3078,10 +3075,9 @@ Returns a ‘aio-promise’ object that can be used to wait for completion."
     (set-marker marker nil)))
 
 (defun org-gcal--delete-event (calendar-id event-id etag marker &optional a-token)
-  "\
-Deletes an event on Calendar CALENDAR-ID with EVENT-ID. The Org buffer and
-point from which the event is read is given by MARKER. MARKER is destroyed by
-this function.
+  "Delete an event on Calendar CALENDAR-ID with EVENT-ID.
+The Org buffer and point from which the event is read is given by MARKER.
+MARKER is destroyed by this function.
 
 If ETAG is provided, it is used to retrieve the event data from the server and
 overwrite the event at MARKER if the event has changed on the server.
@@ -3171,9 +3167,9 @@ AIO version: ‘org-gcal--delete-event-aio’."
         (set-marker marker nil)))))
 
 (aio-iter2-defun org-gcal--delete-event-aio (calendar-id event-id etag marker &optional a-token)
-  "Deletes an event on Calendar CALENDAR-ID with EVENT-ID.  The Org buffer and
-point from which the event is read is given by MARKER. MARKER is destroyed by
-this function.
+  "Delete an event on Calendar CALENDAR-ID with EVENT-ID.
+The Org buffer and point from which the event is read is given by MARKER.
+MARKER is destroyed by this function.
 
 If ETAG is provided, it is used to retrieve the event data from the server and
 overwrite the event at MARKER if the event has changed on the server.
@@ -3381,7 +3377,7 @@ background processes."
   "Wraps ‘request' in a promise.
 
 The promise on success will resolve to a ‘request-response’ object, from which
-all parts of the response can be read. On failure, a signal will be thrown with
+all parts of the response can be read.  On failure, a signal will be thrown with
 AIO-REQUEST as the error symbol and the ‘request-response’ object as the data.
 
 The meaning of URL and the other SETTINGS are the same as for ‘request’, except
