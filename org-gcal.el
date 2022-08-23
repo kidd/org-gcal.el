@@ -3317,11 +3317,14 @@ beginning position."
 
 When SILENT is non-nil, silence messages even when ‘org-gcal-notify-p’ is
 non-nil."
-  (when (and org-gcal-notify-p (not silent))
-    (if org-gcal-logo-file
-        (alert message :title title :icon org-gcal-logo-file)
-      (alert message :title title))
-    (message "%s\n%s" title message)))
+  ;; Double backslashes to work around https://github.com/aki2o/log4e/issues/9.
+  (let* ((title (replace-regexp-in-string "\\\\" "\\\\" title t t))
+         (message (replace-regexp-in-string "\\\\" "\\\\" message t t)))
+   (when (and org-gcal-notify-p (not silent))
+     (if org-gcal-logo-file
+         (alert message :title title :icon org-gcal-logo-file)
+       (alert message :title title))
+     (message "%s\n%s" title message))))
 
 (defun org-gcal--time-to-seconds (plst)
   "Convert PLST, a value from ‘org-gcal--parse-date’, to Unix timestamp.
