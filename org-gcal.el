@@ -483,22 +483,41 @@ AIO version: ‘org-gcal--sync-calendar-aio’."
          ;; ‘org-gcal--sync-calendar-events’. Later we’ll strip this first
          ;; element.
          (parent-events (list 'dummy)))
-    (deferred:$                         ; Migrated to AIO
-      (org-gcal--sync-calendar-events
-       calendar-id-file skip-export silent nil up-time down-time parent-events)
-      (deferred:nextc it
-        (lambda (_)
-          (deferred:loop
-            ;; Strip dummy first element and remove duplicates
-            (cl-remove-duplicates (cdr parent-events) :test #'string=)
-            (lambda (parent-event-id)
-              (when (eq org-gcal-recurring-events-mode 'nested)
-                (deferred:$             ; Migrated to AIO
-                  (org-gcal--sync-event
-                   calendar-id-file parent-event-id skip-export)
-                  (org-gcal--sync-instances
-                   calendar-id-file parent-event-id skip-export silent nil
-                   up-time down-time))))))))))
+    (deferred:try
+      (deferred:$                         ; Migrated to AIO
+        (org-gcal--sync-calendar-events
+         calendar-id-file skip-export silent nil up-time down-time parent-events)
+        (deferred:nextc it
+          (lambda (_)
+            (deferred:loop
+              ;; Strip dummy first element and remove duplicates
+              (cl-remove-duplicates (cdr parent-events) :test #'string=)
+              (lambda (parent-event-id)
+                (when (eq org-gcal-recurring-events-mode 'nested)
+                  ;; Catch
+                  (deferred:try           ; Migrated to AIO
+                    (deferred:$
+                      (org-gcal--sync-event
+                       calendar-id-file parent-event-id skip-export)
+                      (org-gcal--sync-instances
+                       calendar-id-file parent-event-id skip-export silent nil
+                       up-time down-time))
+                    :catch
+                    (lambda (err)
+                      (org-gcal--notify
+                       (format
+                        "org-gcal--sync-calendar(calendar-id-file=%S)"
+                        calendar-id-file)
+                       (format
+                        "for parent-event-id %S: error: %S"
+                        parent-event-id err))))))))))
+      :catch
+      (lambda (err)
+        (org-gcal--notify
+         (format
+          "org-gcal--sync-calendar(calendar-id-file=%S)"
+          calendar-id-file)
+         (format "error: %S" err))))))
 
 (aio-iter2-defun org-gcal--sync-calendar-aio
   (calendar-id-file skip-export silent up-time down-time)
@@ -2215,7 +2234,8 @@ For overall description, including CLEAR-GCAL-INFO, see that."
                      'noerror)
                 (replace-match "" 'fixedcase))
               (org-entry-delete marker org-gcal-calendar-id-property)
-              (org-entry-delete marker org-gcal-entry-id-property))
+              (org-entry-delete marker org-gcal-entry-id-property)
+              (org-entry-delete marker org-gcal-etag-property))
             ;; Finally cancel and delete the event if this is configured.
             (org-with-point-at marker
               (org-back-to-heading)
@@ -2917,18 +2937,29 @@ AIO version: ‘org-gcal--post-event-aio’."
                            smry
                            (org-gcal--format-entry-id calendar-id event-id)
                            "Will overwrite this entry with event from server."))
-                  (deferred:$           ; Migrated to AIO
-                    (org-gcal--get-event calendar-id event-id)
-                    (deferred:nextc it
-                      (lambda (response)
-                        (save-excursion
-                          (with-current-buffer (marker-buffer marker)
-                            (goto-char (marker-position marker))
-                            (org-gcal--update-entry
-                             calendar-id
-                             (request-response-data response)
-                             (if event-id 'update-existing 'create-from-entry))))
-                        (deferred:succeed nil))))))
+                  (deferred:try
+                    (deferred:$           ; Migrated to AIO
+                      (org-gcal--get-event calendar-id event-id)
+                      (deferred:nextc it
+                        (lambda (response)
+                          (save-excursion
+                            (with-current-buffer (marker-buffer marker)
+                              (goto-char (marker-position marker))
+                              (org-gcal--update-entry
+                               calendar-id
+                               (request-response-data response)
+                               (if event-id 'update-existing 'create-from-entry))))
+                          (deferred:succeed nil))))
+                    :catch
+                    (lambda (err)
+                      (if (string-match "(error http 404)" (cadr err))
+                          (org-with-point-at marker
+                            (org-entry-delete marker org-gcal-calendar-id-property)
+                            (org-entry-delete marker org-gcal-entry-id-property)
+                            (org-entry-delete marker org-gcal-etag-property)
+                            (org-back-to-heading)
+                            (org-gcal--handle-cancelled-entry))
+                        (signal (car err) (cdr err)))))))
                ;; Generic error-handler meant to provide useful information about
                ;; failure cases not otherwise explicitly specified.
                ((not (eq error-msg nil))
@@ -3320,11 +3351,11 @@ non-nil."
   ;; Double backslashes to work around https://github.com/aki2o/log4e/issues/9.
   (let* ((title (replace-regexp-in-string "\\\\" "\\\\" title t t))
          (message (replace-regexp-in-string "\\\\" "\\\\" message t t)))
-   (when (and org-gcal-notify-p (not silent))
-     (if org-gcal-logo-file
-         (alert message :title title :icon org-gcal-logo-file)
-       (alert message :title title))
-     (message "%s\n%s" title message))))
+    (when (and org-gcal-notify-p (not silent))
+      (if org-gcal-logo-file
+          (alert message :title title :icon org-gcal-logo-file)
+          (alert message :title title))
+      (alert message :title title :style 'message))))
 
 (defun org-gcal--time-to-seconds (plst)
   "Convert PLST, a value from ‘org-gcal--parse-date’, to Unix timestamp.
