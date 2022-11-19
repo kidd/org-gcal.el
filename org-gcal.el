@@ -2,7 +2,7 @@
 
 ;; Author: myuhe <yuhei.maeda_at_gmail.com>
 ;; URL: https://github.com/kidd/org-gcal.el
-;; Version: 0.4.2
+;; Version: 0.5.0
 ;; Maintainer: Raimon Grau <raimonster@gmail.com>
 ;; Copyright (C) :2014 myuhe all rights reserved.
 ;; Package-Requires: ((request "20190901") (request-deferred "20181129") (aio "1.0") (alert) (persist) (emacs "26") (org "9.3"))
