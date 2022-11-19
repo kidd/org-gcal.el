@@ -15,6 +15,9 @@ jobs:
     - name: Checkout org-gcal repo
       uses: actions/checkout@v2
 
+    - name: Fail
+      run: false
+
     - name: Install Python
       uses: actions/setup-python@v2
       with:
@@ -54,13 +57,10 @@ jobs:
     - name: Test
       run: make test
 
-    - name: Fail
-      run: false
-
     - name: SSH into container on failure
       if: ${{ failure() }}
-      uses: lhotari/action-upterm@v1
-      timeout-minutes: 30
+      uses: telotortium/action-upterm@wait-timeout-minutes
       with:
         ## limits ssh access and adds the ssh public key for the user which triggered the workflow
         limit-access-to-actor: true
+        wait-timeout-minutes: 2
