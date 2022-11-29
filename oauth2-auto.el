@@ -187,10 +187,12 @@ fix https://github.com/rhaps0dy/emacs-oauth2-auto/issues/6."
        (backtrace-frames 'oauth2-auto--plstore-write))
     (error "BUG: Attempted to write ‘oauth2-auto’ keys to %s, not ‘oauth2-auto-plstore’ (%s).  Please report to https://github.com/rhaps0dy/emacs-oauth2-auto/issues/6.%s"
            (buffer-file-name) oauth2-auto-plstore
-           (if (version< emacs-version "27.1")
-               ""
-             (concat " Backtrace:\n\n"
-                     (backtrace-print-to-string (backtrace-frames 'oauth2-auto--plstore-write)))))))
+           (if (and (require 'backtrace nil t)
+                    (fboundp 'backtrace-print-to-string))
+               (concat " Backtrace:\n\n"
+                       (backtrace-print-to-string (backtrace-frames 'oauth2-auto--plstore-write)))
+             ""))))
+
 
 (defun oauth2-auto--plstore-read (username provider)
   "Read the data for USERNAME and PROVIDER from the cache, else from plstore.
