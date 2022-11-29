@@ -1,5 +1,5 @@
 ;; Keep in sync with Package-Requires lines in the package files.
-(define-package "org-gcal" "0.4.1"
+(define-package "org-gcal" "0.4.2"
   "Org sync with Google Calendar"
    '((aio "1.0")
      (alert "1.2")
