@@ -1720,7 +1720,11 @@ heading."
                            end
                          (org-gcal--iso-previous-day end))))))))
       (if (org-element-property :scheduled elem)
-          (unless (and recurrence old-start) (org-schedule nil timestamp))
+          (unless (and recurrence old-start)
+            ;; Ensure CLOSED timestamp isn’t wiped out by ‘org-gcal-sync’ (see
+            ;; https://github.com/kidd/org-gcal.el/issues/218).
+            (let ((org-closed-keep-when-no-todo t))
+              (org-schedule nil timestamp)))
         (insert timestamp)
         (newline)
         (when desc (newline))))
