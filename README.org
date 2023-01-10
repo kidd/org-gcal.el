@@ -280,6 +280,9 @@ in any way.
 *** =org-gcal-sync=
    Like =org-gcal-fetch=, but also update events on the server if they have
    changed locally.
+   Note: This command does not post /newly created events/ onto the server, which
+   is done with =org-gcal-post-at-point=. =org-gcal-sync= updates events /after/
+   they are posted to the server.
 *** =org-gcal-fetch-buffer=
    Fetch changes to Google calendar events to update entries in the current
    buffer, but don't update events on server.
