@@ -48,10 +48,13 @@ screen that says "This app isn't verified". You will need to click on the
 :CUSTOM_ID:  Installation
 :END:
 
-*WARNING:* The steps described below stopped working on 28.02.2022 when [[https://developers.googleblog.com/2022/02/making-oauth-flows-safer.html#disallowed-oob][Google
-deprecated the ability to retrieve OAuth 2.0 tokens via out-of-band
-redirect_uri]]. Please refer to [[https://github.com/kidd/org-gcal.el/issues/191][#191]] for more background and to track progress
-on resolving this issue.
+The method below will allow you to use oauth2-auto to perform authentication
+of the Google Calendar API. This new method is required due to a February 2022
+change on Google's end that removed Out-of-Band redirect urls.
+
+Please note that users still the old OOB method of authentication will be required to
+use the below method before Feburary 2023, [[https://developers.google.com/identity/protocols/oauth2/resources/oob-migration][as Google will be blocking all existing
+OOB clients on January 31, 2023.]]
 
 1. Go to [[https://console.developers.google.com/project][Google Developers Console]]
 
@@ -119,6 +122,15 @@ recommended that you put the following in your init.el:
 #+begin_src elisp
 (setq plstore-cache-passphrase-for-symmetric-encryption t)
 #+end_src
+
+You may run into an issue where emacs asks for your PLSTORE password, then asks
+whether you want to kill a buffer for `oauth2-auto.plist`without actually creating
+such a file or before returning dispatching `(epg-error "Encrypt failed" exit)`.
+If this occurs, try the following:
+1. If a `oauth2-auto.plist` file exists already in your `USER-EMACS-DIRECTORY`,
+   make sure you use the correct password.
+2. If this file does not exist already, create an empty file titled
+   `oauth2-auto.plist` inside your `USER-EMACS-DIRECTORY` and run `org-gcal-fetch`.
 
 ** Multiple accounts
 
