@@ -303,16 +303,6 @@ in any way.
    using the =ETag= property), automatically update the headline using the
    event data from the server instead of updating the event on the server.
 
-** org-capture template
-Here is a recommended snippet to use as a =org-capture-template= for making Google Calendar appointments:
-#+begin_src elisp
-(setq org-capture-templates
-      `(("a" "Appointment" entry (file ,(concat org-directory "/gcal.org"))
-        "* %?\n:PROPERTIES:\n:calendar-id:\tFirst.Last@gmail.com\n:END:\n:org-gcal:\n%^T--%^T\n:END:\n\n" :jump-to-captured t)))
-#+end_src
-Change the following:
-- `/gcal.org` should be whichever org file you plan to capture appointments to. If this file is not in your generic =org-directory=, then adjust the `(concat org-directory "/gcal.org")` as needed.
-- `First.Last@gmail.com` should be the calendar id you want to capture to. If this is your Gmail account's calendar, then just change `First.Last` to be your email handle.
 ** Deleting events
 If an event is deleted on the server, then updating an event (via
 =org-gcal-post-at-point=, =org-gcal-sync=, etc.) will optionally cancel and
@@ -398,6 +388,46 @@ If you would like to customize the contents of event entries (for example, to ad
                          (apply #'format "%d:%02d" (cl-floor minutes 60)))))))
   (add-hook 'org-gcal-after-update-entry-functions #'my-org-gcal-set-effort)
 #+END_SRC
+
+** org-capture template
+
+Here is a recommended snippet to use as a =org-capture-template= for making Google Calendar appointments:
+#+begin_src elisp
+(setq org-capture-templates
+      `(("a" "Appointment" entry (file ,(concat org-directory "/gcal.org"))
+        "* %?\n:PROPERTIES:\n:calendar-id:\tFirst.Last@gmail.com\n:END:\n:org-gcal:\n%^T--%^T\n:END:\n\n" :jump-to-captured t)))
+#+end_src
+Change the following:
+- `/gcal.org` should be whichever org file you plan to capture appointments to. If this file is not in your generic =org-directory=, then adjust the `(concat org-directory "/gcal.org")` as needed.
+- `First.Last@gmail.com` should be the calendar id you want to capture to. If this is your Gmail account's calendar, then just change `First.Last` to be your email handle.
+
+** Sync automatically at regular times
+
+This snippet uses `run-at-time` to perform a `org-gcal-sync` at specific times.
+#+begin_src elisp
+;; Run ‘org-gcal-sync’ regularly not at startup, but at 8 AM every day,
+;; starting the next time 8 AM arrives.
+(run-at-time
+ (let* ((now-decoded (decode-time))
+        (today-8am-decoded
+         (append '(0 0 8) (nthcdr 3 now-decoded)))
+        (now (encode-time now-decoded))
+        (today-8am (encode-time today-8am-decoded)))
+   (if (time-less-p now today-8am)
+       today-8am
+     (time-add today-8am (* 24 60 60))))
+ (* 24 60 60)
+ (defun my-org-gcal-sync-clear-token ()
+   "Sync calendar, clearing tokens first."
+   (interactive)
+   (require 'org-gcal)
+   (when org-gcal--sync-lock
+     (warn "%s" "‘my-org-gcal-sync-clear-token’: ‘org-gcal--sync-lock’ not nil - calling ‘org-gcal--sync-unlock’.")
+     (org-gcal--sync-unlock))
+   (org-gcal-sync-tokens-clear)
+   (org-gcal-sync)
+   nil))
+#+end_src
 
 * Troubleshooting
 ** Debugging
