@@ -120,6 +120,38 @@ recommended that you put the following in your init.el:
 (setq plstore-cache-passphrase-for-symmetric-encryption t)
 #+end_src
 
+Alternatively, you may want to use an *asymmetric* GPG key instead. The main
+advantage of this is that the key can be retrieved from ~gpg-agent~ instead.
+In particular, on many systems you can configure ~gpg-agent~ to read the key
+from the system keychain, which means that you should only need to enter the
+keychain password, instead of having to memorize and enter a separate
+password for ~plstore~. As a bonus, you'll be prompted fewer times to enter
+a password, and it's easier to automatically run ~org-gcal~ unattended.
+
+To do this, follow these steps:
+
+1. Generate a new GPG key following [these
+   instructions](https://docs.github.com/en/authentication/managing-commit-signature-verification/generating-a-new-gpg-key).
+   You could reuse an existing one also, but it's probably best to separate
+   it from any other keys whose public keys you publish (Git signing,
+   GPG-encrypted email, etc.).
+
+2. Once you have a key, copy the long form of the GPG key ID you'd like to
+   use (see the Github instructions above, or run
+   ~gpg --list-secret-keys --keyid-format=long~).
+
+3. Add the key ID to the Emacs variable ~plstore-encrypt-to~:
+
+   #+begin_src elisp
+   (require 'plstore)
+   (add-to-list 'plstore-encrypt-to '("GPG-key-id"))
+   #+end_src
+
+4. Set up ~pinentry~ for ~gpg-agent~, so that the password to decrypt the GPG
+   key is stored in the system keychain. For example, on macOS you can follow
+   [these
+   instructions](https://gist.github.com/koshatul/2427643668d4e89c0086f297f9ed2130).
+
 ** Multiple accounts
 
    There's no support for multiple accounts.  If you want to use
