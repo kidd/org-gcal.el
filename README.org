@@ -48,10 +48,13 @@ screen that says "This app isn't verified". You will need to click on the
 :CUSTOM_ID:  Installation
 :END:
 
-*WARNING:* The steps described below stopped working on 28.02.2022 when [[https://developers.googleblog.com/2022/02/making-oauth-flows-safer.html#disallowed-oob][Google
-deprecated the ability to retrieve OAuth 2.0 tokens via out-of-band
-redirect_uri]]. Please refer to [[https://github.com/kidd/org-gcal.el/issues/191][#191]] for more background and to track progress
-on resolving this issue.
+The method below will allow you to use oauth2-auto to perform authentication
+of the Google Calendar API. This new method is required due to a February 2022
+change on Google's end that removed Out-of-Band redirect urls.
+
+Please note that users still the old OOB method of authentication will be required to
+use the below method before Feburary 2023, [[https://developers.google.com/identity/protocols/oauth2/resources/oob-migration][as Google will be blocking all existing
+OOB clients on January 31, 2023.]]
 
 1. Go to [[https://console.developers.google.com/project][Google Developers Console]]
 
@@ -119,6 +122,15 @@ recommended that you put the following in your init.el:
 #+begin_src elisp
 (setq plstore-cache-passphrase-for-symmetric-encryption t)
 #+end_src
+
+You may run into an issue where emacs asks for your PLSTORE password, then asks
+whether you want to kill a buffer for `oauth2-auto.plist`without actually creating
+such a file or before returning dispatching `(epg-error "Encrypt failed" exit)`.
+If this occurs, try the following:
+1. If a `oauth2-auto.plist` file exists already in your `USER-EMACS-DIRECTORY`,
+   make sure you use the correct password.
+2. If this file does not exist already, create an empty file titled
+   `oauth2-auto.plist` inside your `USER-EMACS-DIRECTORY` and run `org-gcal-fetch`.
 
 Alternatively, you may want to use an *asymmetric* GPG key instead. The main
 advantage of this is that the key can be retrieved from ~gpg-agent~ instead.
@@ -254,7 +266,6 @@ After editing an event in Org mode, you can also run =org-gcal-post-at-point= to
 update the event on Google Calendar. The command =org-gcal-sync= does what
 =org-gcal-fetch= does, but also runs =org-gcal-post-at-point= on all events that
 you've edited in Org mode to update the corresponding events in Google Calendar.
-
 ** Event structure
 =org-gcal= modifies the following Org-mode properties and drawers when updating
 an event from the Google Calendar API:
@@ -301,6 +312,9 @@ in any way.
 *** =org-gcal-sync=
    Like =org-gcal-fetch=, but also update events on the server if they have
    changed locally.
+   Note: This command does not post /newly created events/ onto the server, which
+   is done with =org-gcal-post-at-point=. =org-gcal-sync= updates events /after/
+   they are posted to the server.
 *** =org-gcal-fetch-buffer=
    Fetch changes to Google calendar events to update entries in the current
    buffer, but don't update events on server.
@@ -322,7 +336,6 @@ in any way.
    event data from the server instead of updating the event on the server.
 
 ** Deleting events
-
 If an event is deleted on the server, then updating an event (via
 =org-gcal-post-at-point=, =org-gcal-sync=, etc.) will optionally cancel and
 delete the corresponding Org mode headlines:
@@ -407,6 +420,46 @@ If you would like to customize the contents of event entries (for example, to ad
                          (apply #'format "%d:%02d" (cl-floor minutes 60)))))))
   (add-hook 'org-gcal-after-update-entry-functions #'my-org-gcal-set-effort)
 #+END_SRC
+
+** org-capture template
+
+Here is a recommended snippet to use as a =org-capture-template= for making Google Calendar appointments:
+#+begin_src elisp
+(setq org-capture-templates
+      `(("a" "Appointment" entry (file ,(concat org-directory "/gcal.org"))
+        "* %?\n:PROPERTIES:\n:calendar-id:\tFirst.Last@gmail.com\n:END:\n:org-gcal:\n%^T--%^T\n:END:\n\n" :jump-to-captured t)))
+#+end_src
+Change the following:
+- `/gcal.org` should be whichever org file you plan to capture appointments to. If this file is not in your generic =org-directory=, then adjust the `(concat org-directory "/gcal.org")` as needed.
+- `First.Last@gmail.com` should be the calendar id you want to capture to. If this is your Gmail account's calendar, then just change `First.Last` to be your email handle.
+
+** Sync automatically at regular times
+
+This snippet uses `run-at-time` to perform a `org-gcal-sync` at specific times.
+#+begin_src elisp
+;; Run ‘org-gcal-sync’ regularly not at startup, but at 8 AM every day,
+;; starting the next time 8 AM arrives.
+(run-at-time
+ (let* ((now-decoded (decode-time))
+        (today-8am-decoded
+         (append '(0 0 8) (nthcdr 3 now-decoded)))
+        (now (encode-time now-decoded))
+        (today-8am (encode-time today-8am-decoded)))
+   (if (time-less-p now today-8am)
+       today-8am
+     (time-add today-8am (* 24 60 60))))
+ (* 24 60 60)
+ (defun my-org-gcal-sync-clear-token ()
+   "Sync calendar, clearing tokens first."
+   (interactive)
+   (require 'org-gcal)
+   (when org-gcal--sync-lock
+     (warn "%s" "‘my-org-gcal-sync-clear-token’: ‘org-gcal--sync-lock’ not nil - calling ‘org-gcal--sync-unlock’.")
+     (org-gcal--sync-unlock))
+   (org-gcal-sync-tokens-clear)
+   (org-gcal-sync)
+   nil))
+#+end_src
 
 * Troubleshooting
 ** Debugging
