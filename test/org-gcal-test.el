@@ -1,7 +1,7 @@
 ;;; org-gcal-test.el --- Tests for org-gcal.el -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2019 Robert Irelan
-;; Package-Requires: ((org-gcal) (el-mock) (emacs "26") (load-relative "1.3"))
+;; Package-Requires: ((org-gcal) (el-mock) (elnode) (emacs "26") (load-relative "1.3"))
 
 ;; Author: Robert Irelan <rirelan@gmail.com>
 
@@ -33,12 +33,29 @@
   (setq org-gcal-client-id "test_client_id"
         org-gcal-client-secret "test_client_secret"))
 
+(require 'aio)
+(require 'aio-iter2)
 (require 'org-gcal)
 (require 'cl-lib)
 (require 'el-mock)
+(require 'elnode)
 (require 'load-relative)
 (unless (featurep 'org-test)
   (load-relative "org-test"))
+(setq iter2-detect-nested-lambda-yields t)
+
+(defmacro org-gcal-test--aio-iter2-with-test (timeout &rest body)
+  "Run body asynchronously but block synchronously until it completes.
+
+If TIMEOUT seconds passes without completion, signal an
+aio-timeout to cause the test to fail."
+  (declare (indent 1))
+  `(let* ((promises (list (aio-iter2-with-async ,@body)
+                          (aio-timeout ,timeout)))
+          (select (aio-make-select promises)))
+     (aio-wait-for
+      (aio-iter2-with-async
+        (aio-await (aio-await (aio-select select)))))))
 
 (defconst org-gcal-test-calendar-id "foo@foobar.com")
 
@@ -105,6 +122,53 @@ always located at the beginning of the buffer."
      (goto-char (point-min))
      ,@body))
 
+(defmacro org-gcal-test--with-mock-aio (&rest body)
+  "Like ‘with-mock’, but with BODY containing ‘aio-await’.
+This waits synchronously for BODY to complete.
+
+This macro exists primarily to encapsulate the proper way to use ‘with-mock’
+with ‘aio’ code.  As setting ‘iter2-detect-nested-lambda-yields’ to t will show,
+‘with-mock’ creates a nested ‘lambda’ in which BODY is executed. Therefore,
+‘with-mock’ cannot be called within a ‘aio-iter2-with-async’ block.  This code
+enforces that pattern."
+  (declare (indent 0) (debug t))
+  `(with-mock
+     (aio-wait-for
+      (aio-iter2-with-async
+        ,@body))))
+
+(defmacro org-gcal-test--dynamic-let (bindings &rest body)
+  "Temporarily bind VALUEs to PLACEs.
+This is the analogue of `let', but saves the values of the variables in
+BINDINGS, rebinds the variables within an ‘unwind-protect’ block, executes
+BODY, and then resets the bindings in the unwind forms of the ‘unwind-protect’.
+
+This is useful for global variables that you might want to temporarily override
+within tests that execute code from a background context (such as a timer
+created by ‘run-at-time’).
+
+\(fn ((PLACE VALUE) ...) BODY...)"
+  (declare (indent 1) (debug ((&rest [&or (symbolp form)
+                                          (gate gv-place &optional form)])
+                              body)))
+  (let ((orig (gensym "orig")))
+    `(let (,orig)
+       (unwind-protect
+           (progn
+             ,@(mapcar
+                (lambda (binding)
+                  `(progn
+                     (setq ,orig
+                            (plist-put ,orig ',(car binding) ,(car binding)))
+                     (setq ,(car binding) ,@(cdr binding))))
+                bindings)
+             ,@body)
+         (progn
+           ,@(mapcar
+              (lambda (binding)
+                 `(setq ,(car binding) (plist-get ,orig ',(car binding))))
+              bindings))))))
+
 (defun org-gcal-test--json-read-string (json)
   "Wrap ‘org-gcal--json-read’ to parse a JSON string."
   (with-temp-buffer
@@ -120,6 +184,10 @@ always located at the beginning of the buffer."
      (t
       (user-error "org-gcal-test--title-to-string: unhandled type for :title prop of elem %S"
                   elem)))))
+
+(aio-iter2-defun org-gcal-test--aio-resolve-to (result)
+  "Create an ‘aio-promise’ that immediately resolves to RESULT."
+  result)
 
 (defconst org-gcal-test-event
   (org-gcal-test--json-read-string org-gcal-test-event-json))
@@ -607,6 +675,48 @@ Second paragraph
     (let ((org-gcal-managed-post-at-point-update-existing 'always-push))
       (org-gcal-post-at-point)))))
 
+(ert-deftest org-gcal-test--post-at-point-aio-basic ()
+  "Verify basic case of ‘org-gcal-post-to-point-aio’."
+  (org-gcal-test--with-temp-buffer
+      "\
+* My event summary
+:PROPERTIES:
+:ETag:     \"12344321\"
+:LOCATION: Foobar's desk
+:link: [[https://google.com][Google]]
+:TRANSPARENCY: opaque
+:calendar-id: foo@foobar.com
+:entry-id:       foobar1234/foo@foobar.com
+:END:
+:org-gcal:
+<2019-10-06 Sun 17:00-21:00>
+
+My event description
+
+Second paragraph
+:END:
+"
+    (org-gcal-test--with-mock-aio
+      (stub org-gcal--time-zone => '(0 "UTC"))
+      (stub org-generic-id-add-location => nil)
+      (stub org-gcal--ensure-token-aio => (aio-iter2-lambda () nil))
+      (stub org-gcal--get-access-token => "my_access_token")
+      (stub org-gcal--refresh-token-aio => (aio-iter2-lambda () "test_access_token"))
+      (mock (org-gcal--post-event-aio
+             "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
+             "My event summary" "Foobar's desk"
+             `((url . "https://google.com") (title . "Google"))
+             "My event description\n\nSecond paragraph"
+             "foo@foobar.com"
+             * "opaque" "\"12344321\"" "foobar1234"
+             * * *)
+            => (aio-iter2-lambda () nil))
+      (org-gcal-test--dynamic-let
+          ((org-gcal-managed-post-at-point-update-existing 'always-push))
+        (org-back-to-heading)
+        (message "About to call org-gcal-post-at-point-aio")
+        (aio-await (org-gcal-post-at-point-aio-promise))))))
+
 (ert-deftest org-gcal-test--post-at-point-api-response ()
   "Verify that ‘org-gcal-post-to-point’ updates an event using the data
 returned from the Google Calendar API."
@@ -681,6 +791,102 @@ My event description
 Second paragraph
 "))))))))
 
+;; To test ‘org-gcal-after-update-entry-functions’, we must add a hook
+;; that is a real lambda, not an ‘iter2-lambda’. In order to do that, we
+;; need to define it outside the ‘aio-iter2-with-async’ block so that
+;; this macro doesn’t transform it.
+(defun org-gcal-test--update-entry-hook (calendar-id event update-mode)
+ (org-gcal-tmp-dbgmsg "update-entry-hook %S %S %S" calendar-id event update-mode)
+ (setq update-entry-hook-called t))
+(defvar org-gcal-test--update-entry-hook-called nil)
+(defun org-gcal-test--test-event-handler (httpcon)
+  (org-gcal-tmp-dbgmsg "in test-event-handler: %S %S"
+                       (elnode-http-host httpcon)
+                       (elnode-http-pathinfo httpcon))
+  (elnode-send-json httpcon org-gcal-test-event))
+(ert-deftest org-gcal-test--post-at-point-aio-api-response ()
+  "Verify that ‘org-gcal-post-to-point’ updates an event using the data
+returned from the Google Calendar API."
+  ;; Appears to be an issue in iter2’s handling of ‘save-restriction’. Doesn’t
+  ;; appear to affect interactive use of ‘org-gcal’.
+  :expected-result :failed
+  (let*
+      ((port 16820))
+    (unwind-protect
+        (progn
+          (elnode-start 'org-gcal-test--test-event-handler :port port)
+          (org-gcal-test--with-mock-aio
+           (org-gcal-test--with-temp-buffer
+            "\
+* Original summary
+:PROPERTIES:
+:ETag:     \"12344321\"
+:LOCATION: Original location
+:link: [[https://yahoo.com][Yahoo!]]
+:TRANSPARENCY: transparent
+:calendar-id: foo@foobar.com
+:entry-id:       foobar1234/foo@foobar.com
+:END:
+:org-gcal:
+<2021-03-05 Fri 12:00-14:00>
+
+Original description
+
+Original second paragraph
+:END:
+"
+            (stub org-gcal--time-zone => '(0 "UTC"))
+            (stub org-generic-id-add-location => nil)
+            (stub org-gcal--get-access-token => "my_access_token")
+            (stub org-gcal--refresh-token-aio => (aio-iter2-lambda () "test_access_token"))
+            (stub org-gcal--ensure-token-aio => (aio-iter2-lambda () nil))
+            (org-gcal-test--dynamic-let
+             ((org-gcal-api-url (format "http://localhost:%d" port))
+              (org-gcal-managed-post-at-point-update-existing 'always-push)
+              (org-gcal-after-update-entry-functions '(org-gcal-test--update-entry-hook))
+              (org-gcal-test--update-entry-hook-called nil))
+             (org-gcal-tmp-dbgmsg "About to call org-gcal-post-at-point-aio")
+             (org-gcal-tmp-dbgmsg "org-gcal-after-update-entry-functions: %S"
+                                  org-gcal-after-update-entry-functions)
+             (org-gcal-tmp-dbgmsg "org-gcal-api-url: %S" org-gcal-api-url)
+             (aio-await (org-gcal-post-at-point-aio-promise))
+             (org-gcal-tmp-dbgmsg "org-back-to-heading")
+             (org-back-to-heading)
+            ;; Disable this for now - the hook seems not to be always called, and
+            ;; I’m not sure why.
+             (should (equal update-entry-hook-called t))
+             (let ((elem (org-element-at-point)))
+               (should (equal (org-gcal-test--title-to-string elem)
+                              "My event summary"))
+               (should (equal (org-element-property :ETAG elem)
+                              "\"12344321\""))
+               (should (equal (org-element-property :LOCATION elem)
+                              "Foobar's desk"))
+               (should (equal (org-element-property :LINK elem)
+                              "[[https://google.com][Google]]"))
+               (should (equal (org-element-property :TRANSPARENCY elem)
+                              "opaque"))
+               (should (equal (org-element-property :CALENDAR-ID elem)
+                              "foo@foobar.com"))
+               (should (equal (org-element-property :ENTRY-ID elem)
+                              "foobar1234/foo@foobar.com")))
+            ;; Check contents of "org-gcal" drawer
+             (re-search-forward ":org-gcal:")
+             (let ((elem (org-element-at-point)))
+               (should (equal (org-element-property :drawer-name elem)
+                              "org-gcal"))
+               (should (equal (buffer-substring-no-properties
+                               (org-element-property :contents-begin elem)
+                               (org-element-property :contents-end elem))
+                              "\
+<2019-10-06 Sun 17:00-21:00>
+
+My event description
+
+Second paragraph
+")))))))
+      (elnode-stop port))))
+
 (ert-deftest org-gcal-test--post-at-point-managed-update-existing-gcal ()
   "Verify ‘org-gcal-post-at-point’ with ‘org-gcal-managed-update-existing-mode’
 set to \"gcal\"."
@@ -708,16 +914,57 @@ Second paragraph
       (stub org-generic-id-add-location => nil)
       (stub org-gcal--get-access-token => "my_access_token")
       (stub org-gcal--refresh-token => (deferred:succeed "test_access_token"))
-      (mock (y-or-n-p *) => nil)
       (mock (org-gcal--post-event "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
                                   "My event summary" "Foobar's desk"
-                                  `((url . "https://google.com") (title . "Google"))
+                                  '((url . "https://google.com") (title . "Google"))
                                   "My event description\n\nSecond paragraph"
                                   "foo@foobar.com"
                                   * "opaque" "\"12344321\"" "foobar1234"
-                                  * * t))
-      (let ((org-gcal-managed-update-existing-mode "gcal"))
+                                  * * nil))
+      (org-gcal-test--dynamic-let
+          ((org-gcal-managed-update-existing-mode "gcal")
+           (org-gcal-managed-post-at-point-update-existing 'always-push))
         (org-gcal-post-at-point)))))
+
+(ert-deftest org-gcal-test--post-at-point-aio-managed-update-existing-gcal ()
+  "Verify ‘org-gcal-post-at-point’ with ‘org-gcal-managed-update-existing-mode’
+set to \"gcal\"."
+  (org-gcal-test--with-temp-buffer
+      "\
+* My event summary
+:PROPERTIES:
+:ETag:     \"12344321\"
+:LOCATION: Foobar's desk
+:link: [[https://google.com][Google]]
+:TRANSPARENCY: opaque
+:calendar-id: foo@foobar.com
+:entry-id:       foobar1234/foo@foobar.com
+:END:
+:org-gcal:
+<2019-10-06 Sun 17:00-21:00>
+
+My event description
+
+Second paragraph
+:END:
+"
+    (org-gcal-test--with-mock-aio
+      (stub org-gcal--time-zone => '(0 "UTC"))
+      (stub org-generic-id-add-location => nil)
+      (stub org-gcal--get-access-token => "my_access_token")
+      (stub org-gcal--refresh-token-aio => (aio-iter2-lambda () "test_access_token"))
+      (mock (org-gcal--post-event-aio "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
+                                      "My event summary" "Foobar's desk"
+                                      '((url . "https://google.com") (title . "Google"))
+                                      "My event description\n\nSecond paragraph"
+                                      "foo@foobar.com"
+                                      * "opaque" "\"12344321\"" "foobar1234"
+                                      * * nil)
+            => (aio-iter2-lambda () nil))
+      (org-gcal-test--dynamic-let
+          ((org-gcal-managed-update-existing-mode "gcal")
+           (org-gcal-managed-post-at-point-update-existing 'always-push))
+        (aio-await (org-gcal-post-at-point-aio-promise))))))
 
 (ert-deftest org-gcal-test--post-at-point-managed-update-existing-org ()
   "Verify ‘org-gcal-post-at-point’ with ‘org-gcal-managed-update-existing-mode’
@@ -753,8 +1000,51 @@ Second paragraph
                                   "foo@foobar.com"
                                   * "opaque" "\"12344321\"" "foobar1234"
                                   * * nil))
-      (let ((org-gcal-managed-update-existing-mode "org"))
+      (org-gcal-test--dynamic-let
+          ((org-gcal-managed-update-existing-mode "org")
+           (org-gcal-managed-post-at-point-update-existing 'always-push))
         (org-gcal-post-at-point)))))
+
+(ert-deftest org-gcal-test--post-at-point-aio-managed-update-existing-org ()
+  "Verify ‘org-gcal-post-at-point-aio-promise’ with ‘org-gcal-managed-update-existing-mode’
+set to \"org\"."
+  (org-gcal-test--with-temp-buffer
+      "\
+* My event summary
+:PROPERTIES:
+:ETag:     \"12344321\"
+:LOCATION: Foobar's desk
+:link: [[https://google.com][Google]]
+:TRANSPARENCY: opaque
+:calendar-id: foo@foobar.com
+:entry-id:       foobar1234/foo@foobar.com
+:END:
+:org-gcal:
+<2019-10-06 Sun 17:00-21:00>
+
+My event description
+
+Second paragraph
+:END:
+"
+    (org-gcal-test--with-mock-aio
+      (stub org-gcal--time-zone => '(0 "UTC"))
+      (stub org-generic-id-add-location => nil)
+      (stub org-gcal--get-access-token => "my_access_token")
+      (stub org-gcal--refresh-token-aio => (aio-iter2-lambda () "test_access_token"))
+      (mock
+       (org-gcal--post-event-aio "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
+                             "My event summary" "Foobar's desk"
+                             `((url . "https://google.com") (title . "Google"))
+                             "My event description\n\nSecond paragraph"
+                             "foo@foobar.com"
+                             * "opaque" "\"12344321\"" "foobar1234"
+                             * * nil)
+       => (aio-iter2-lambda () nil))
+      (org-gcal-test--dynamic-let
+          ((org-gcal-managed-update-existing-mode "org")
+           (org-gcal-managed-post-at-point-update-existing 'always-push))
+        (aio-await (org-gcal-post-at-point-aio-promise))))))
 
 (ert-deftest org-gcal-test--post-at-point-managed-create-from-entry-gcal ()
   "Verify ‘org-gcal-post-at-point’ with ‘org-gcal-managed-create-from-entry-mode’
@@ -781,17 +1071,57 @@ Second paragraph
       (stub org-generic-id-add-location => nil)
       (stub org-gcal--get-access-token => "my_access_token")
       (stub org-gcal--refresh-token => (deferred:succeed "test_access_token"))
-      (mock (y-or-n-p *) => nil)
       (mock (org-gcal--post-event "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
                                   "My event summary" "Foobar's desk"
                                   nil
                                   "My event description\n\nSecond paragraph"
                                   "foo@foobar.com"
                                   * "opaque" "\"12344321\"" nil
-                                  * * t))
-      (let ((org-gcal-managed-update-existing-mode "gcal")
-            (org-gcal-managed-create-from-entry-mode "gcal"))
+                                  * * nil))
+      (org-gcal-test--dynamic-let
+          ((org-gcal-managed-update-existing-mode "gcal")
+           (org-gcal-managed-create-from-entry-mode "gcal")
+           (org-gcal-managed-post-at-point-update-existing 'always-push))
         (org-gcal-post-at-point)))))
+
+(ert-deftest org-gcal-test--post-at-point-aio-managed-create-from-entry-gcal ()
+  "Verify ‘org-gcal-post-at-point-aio-promise’ with ‘org-gcal-managed-create-from-entry-mode’
+set to \"gcal\"."
+  (org-gcal-test--with-temp-buffer
+      "\
+* My event summary
+:PROPERTIES:
+:ETag:     \"12344321\"
+:LOCATION: Foobar's desk
+:TRANSPARENCY: opaque
+:calendar-id: foo@foobar.com
+:END:
+:org-gcal:
+<2019-10-06 Sun 17:00-21:00>
+
+My event description
+
+Second paragraph
+:END:
+"
+    (org-gcal-test--with-mock-aio
+      (stub org-gcal--time-zone => '(0 "UTC"))
+      (stub org-generic-id-add-location => nil)
+      (stub org-gcal--get-access-token => "my_access_token")
+      (stub org-gcal--refresh-token-aio => (aio-iter2-lambda () "test_access_token"))
+      (mock (org-gcal--post-event-aio "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
+                                  "My event summary" "Foobar's desk"
+                                  nil
+                                  "My event description\n\nSecond paragraph"
+                                  "foo@foobar.com"
+                                  * "opaque" "\"12344321\"" nil
+                                  * * nil)
+            => (aio-iter2-lambda () nil))
+      (org-gcal-test--dynamic-let
+       ((org-gcal-managed-update-existing-mode "gcal")
+        (org-gcal-managed-create-from-entry-mode "gcal")
+        (org-gcal-managed-post-at-point-update-existing 'always-push))
+       (aio-await (org-gcal-post-at-point-aio-promise))))))
 
 (ert-deftest org-gcal-test--post-at-point-managed-create-from-entry-org ()
   "Verify ‘org-gcal-post-at-point’ with ‘org-gcal-managed-create-from-entry-mode’
@@ -1223,6 +1553,18 @@ Second paragraph
              (deferred:sync! (request-deferred))
              "Success"))))
 
+(ert-deftest org-gcal-test--ert-fail-aio ()
+  "Test handling of ERT failures in aio code. Should fail."
+  :expected-result :failed
+  (should
+   (equal "Success"
+          (org-gcal-test--with-mock-aio
+            (stub org-gcal--aio-request =>
+                  (aio-iter2-lambda (&rest _args)
+                    (ert-fail "Failure")))
+            (let ((res (aio-await (org-gcal--aio-request))))
+              res)))))
+
 (ert-deftest org-gcal-test--convert-time-to-local-timezone()
   (should (equal
            (org-gcal--convert-time-to-local-timezone "2021-03-03T11:30:00-00:00" nil)
@@ -1258,45 +1600,45 @@ Regression test for https://github.com/kidd/org-gcal.el/issues/172 .
 Also tests that the `org-gcal--archive-old-event' function does
 not loop over and over, archiving the same entry because it is
 under another heading in the same file."
-  (let ((org-archive-location "::* Archived")  ; Make the archive this same buffer
-        (test-time "2022-01-30 Sun 01:23")
-        (buf "\
+  (with-mock
+    (stub org-gcal--time-zone => '(0 "UTC"))
+    (let ((org-archive-location "::* Archived")  ; Make the archive this same buffer
+          (test-time "2022-01-30 Sun 01:23")
+          (buf "\
 #+CATEGORY: Test
 
 * Event Title
 :PROPERTIES:
 :org-gcal-managed: something
 :END:
+:org-gcal:
 <2021-01-01 Fri 12:34-14:35>
-"))
-    (org-test-with-temp-text-in-file
-        buf
-      (org-test-at-time (format "<%s>" test-time)
-        ;; Ensure property drawer is not indented
-        (setq-local org-adapt-indentation nil)
-        (let* ((target-buf (format "\
-#+CATEGORY: Test
-
-* Archived
-
-** Event Title
-:PROPERTIES:
-:org-gcal-managed: something
-:ARCHIVE_TIME: %s
-:ARCHIVE_FILE: %s
-:ARCHIVE_CATEGORY: Test
 :END:
-<2021-01-01 Fri 12:34-14:35>
-"
-                                   test-time
-                                   ; The variable `file' is the current file
-                                   ; name under the macro
-                                   ; `org-test-with-temp-text-in-file'
-                                   file)))
+"))
+      (org-test-with-temp-text-in-file
+          buf
+        (org-test-at-time (format "<%s>" test-time)
+          ;; Ensure property drawer is not indented
+          (setq-local org-adapt-indentation nil)
           (org-gcal--archive-old-event)
-          (let ((bufstr
-                 (buffer-substring-no-properties (point-min) (point-max))))
-            (should (string-equal bufstr target-buf))))))))
+          ;; Go to archived headline
+          (goto-char (point-min))
+          (re-search-forward "^\\*\\* ")
+          ;; Examine individual properties to make the test less sensitive to
+          ;; formatting differences.
+          (should (equal (org-gcal--headline)
+                         "Event Title"))
+          (should (equal (org-entry-get (point) "org-gcal-managed")
+                         "something"))
+          (should (equal (org-entry-get (point) "ARCHIVE_TIME")
+                         test-time))
+          (should (equal (org-entry-get (point) "ARCHIVE_CATEGORY")
+                         "Test"))
+          (let ((time-desc (org-gcal--get-time-and-desc)))
+            (should (equal time-desc
+                           '(:start "2021-01-01T12:34:00Z"
+                             :end "2021-01-01T14:35:00Z"
+                             :desc "")))))))))
 
 ;;; TODO: Figure out mocking for POST/PATCH followed by GET
 ;;; - ‘mock‘ might work for this - the argument list must be specified up
@@ -1307,3 +1649,7 @@ under another heading in the same file."
 ;;; - There are actually no org-mode tests for this.
 ;;; - Set ‘org-id-locations’ (a hash table). This maps each ID to the file in
 ;;;   which the ID is found, so a temp file (not just a temp buffer) is needed.
+
+(provide 'org-gcal-test)
+
+;;; org-gcal-test.el ends here
