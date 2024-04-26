@@ -40,6 +40,7 @@
 (require 'ol)
 (require 'org)
 (require 'org-archive)
+(require 'org-compat)
 (require 'org-clock)
 (require 'org-element)
 (require 'org-generic-id)
@@ -1032,84 +1033,85 @@ Any parent recurring events are appended in-place to the list PARENT-EVENTS.
 
 AIO version: ‘org-gcal--sync-handle-events-aio'"
   (with-current-buffer (find-file-noselect calendar-file)
-    (cl-loop
-     for event across events
-     if
-     (let* ((entry-id (org-gcal--format-entry-id
-                       calendar-id (plist-get event :id)))
-            (marker (org-gcal--id-find entry-id 'markerp)))
-       (when (plist-get event :recurrence)
-         (nconc parent-events (list
-                               (org-gcal--event-id-from-entry-id entry-id))))
-       (cond
-        ;; Ignore event entirely if it is an instance of a recurring event
-        ;; unless we’re currently fetching
-        ;; instances of recurring events (i.e., RECURRING-INSTANCES? is
-        ;; non-nil).
-        ((and (eq org-gcal-recurring-events-mode 'nested)
-              (not recurring-instances?)
-              (plist-get event :recurringEventId))
-         (nconc parent-events
-                (list
-                 (plist-get event :recurringEventId)))
-         nil)
-        ;; If event is present, collect it for later processing.
-        (marker
-         (org-gcal--event-entry-create
-          :entry-id entry-id
-          :marker marker
-          :event event))
-        ;; If event doesn’t already exist and is outside of the
-        ;; range [‘org-gcal-up-days’, ‘org-gcal-down-days’], ignore
-        ;; it. This is necessary because when called with
-        ;; "syncToken", the Calendar API will return all events
-        ;; changed on the calendar, without respecting
-        ;; ‘org-gcal-up-days’ or ‘org-gcal-down-days’, which means
-        ;; repeated events far in the future will be downloaded.
-        ((when-let*
-             ((up-time) (down-time)
-              (start (plist-get event :start))
-              (end (plist-get event :end))
-              ((or (time-less-p (org-gcal--parse-calendar-time start)
-                                up-time)
-                   (time-less-p down-time
-                                (org-gcal--parse-calendar-time end)))))
-           t)
-         nil)
-        ;; When fetching instances of recurring events that are not yet
-        ;; present, insert them below their parent events, if the parent event
-        ;; exists.
-        (recurring-instances?
-         (let* ((parent-id (org-gcal--format-entry-id
-                            calendar-id (plist-get event :recurringEventId)))
-                (parent-marker
-                 (when parent-id (org-gcal--id-find parent-id 'markerp))))
-           (when parent-marker
-             (atomic-change-group
-               (org-with-point-at parent-marker
-                 (org-insert-heading-respect-content 'invisible-ok)
-                 (org-demote)
-                 (org-gcal--update-entry calendar-id event 'newly-fetched))))
-           nil))
-        ;; Don't insert instances of cancelled events that haven't already been
-        ;; fetched.
-        ((string= "cancelled" (plist-get event :status))
-         nil)
-        (t
-         ;; Otherwise, insert a new entry into the
-         ;; default fetch file.
-         (atomic-change-group
-           (org-with-point-at (point-max)
-             (insert "\n* ")
-             (org-gcal--update-entry calendar-id event 'newly-fetched)
-             (org-entry-put (point) org-gcal-managed-property
-                            org-gcal-managed-newly-fetched-mode)))
-         nil)))
-     collect it)))
+    (org-combine-change-calls (point-min) (point-max)
+      (cl-loop
+       for event across events
+       if
+       (let* ((entry-id (org-gcal--format-entry-id
+                         calendar-id (plist-get event :id)))
+              (marker (org-gcal--id-find entry-id 'markerp)))
+         (when (plist-get event :recurrence)
+           (nconc parent-events (list
+                                 (org-gcal--event-id-from-entry-id entry-id))))
+         (cond
+          ;; Ignore event entirely if it is an instance of a recurring event
+          ;; unless we’re currently fetching
+          ;; instances of recurring events (i.e., RECURRING-INSTANCES? is
+          ;; non-nil).
+          ((and (eq org-gcal-recurring-events-mode 'nested)
+                (not recurring-instances?)
+                (plist-get event :recurringEventId))
+           (nconc parent-events
+                  (list
+                   (plist-get event :recurringEventId)))
+           nil)
+          ;; If event is present, collect it for later processing.
+          (marker
+           (org-gcal--event-entry-create
+            :entry-id entry-id
+            :marker marker
+            :event event))
+          ;; If event doesn’t already exist and is outside of the
+          ;; range [‘org-gcal-up-days’, ‘org-gcal-down-days’], ignore
+          ;; it. This is necessary because when called with
+          ;; "syncToken", the Calendar API will return all events
+          ;; changed on the calendar, without respecting
+          ;; ‘org-gcal-up-days’ or ‘org-gcal-down-days’, which means
+          ;; repeated events far in the future will be downloaded.
+          ((when-let*
+               ((up-time) (down-time)
+                (start (plist-get event :start))
+                (end (plist-get event :end))
+                ((or (time-less-p (org-gcal--parse-calendar-time start)
+                                  up-time)
+                     (time-less-p down-time
+                                  (org-gcal--parse-calendar-time end)))))
+             t)
+           nil)
+          ;; When fetching instances of recurring events that are not yet
+          ;; present, insert them below their parent events, if the parent event
+          ;; exists.
+          (recurring-instances?
+           (let* ((parent-id (org-gcal--format-entry-id
+                              calendar-id (plist-get event :recurringEventId)))
+                  (parent-marker
+                   (when parent-id (org-gcal--id-find parent-id 'markerp))))
+             (when parent-marker
+               (atomic-change-group
+                 (org-with-point-at parent-marker
+                   (org-insert-heading-respect-content 'invisible-ok)
+                   (org-demote)
+                   (org-gcal--update-entry calendar-id event 'newly-fetched))))
+             nil))
+          ;; Don't insert instances of cancelled events that haven't already been
+          ;; fetched.
+          ((string= "cancelled" (plist-get event :status))
+           nil)
+          (t
+           ;; Otherwise, insert a new entry into the
+           ;; default fetch file.
+           (atomic-change-group
+             (org-with-point-at (point-max)
+               (insert "\n* ")
+               (org-gcal--update-entry calendar-id event 'newly-fetched)
+               (org-entry-put (point) org-gcal-managed-property
+                              org-gcal-managed-newly-fetched-mode)))
+           nil)))
+       collect it))))
 
 (aio-iter2-defun org-gcal--sync-handle-events-aio
-    (calendar-id calendar-file events recurring-instances? up-time down-time
-     parent-events)
+  (calendar-id calendar-file events recurring-instances? up-time down-time
+               parent-events)
   "Handle a list of EVENTS fetched from the Calendar API.
 
 CALENDAR-ID and CALENDAR-FILE are defined in ‘org-gcal--sync-inner'.
@@ -2527,127 +2529,130 @@ heading."
                            :date))
          (start (if stime (org-gcal--convert-time-to-local-timezone stime org-gcal-local-timezone) sday))
          (end   (if etime (org-gcal--convert-time-to-local-timezone etime org-gcal-local-timezone) eday))
+         (elem (org-element-at-point))
+         (heading-begin (org-element-begin elem))
+         (heading-end (org-element-end elem))
          (old-time-desc (org-gcal--get-time-and-desc))
          (old-start (plist-get old-time-desc :start))
          (old-end (plist-get old-time-desc :start))
-         (recurrence (plist-get event :recurrence))
-         (elem))
-    (when loc (replace-regexp-in-string "\n" ", " loc))
-    (org-edit-headline
-     (cond
-      ;; Don’t update headline if the new summary is the same as the CANCELLED
-      ;; todo keyword.
-      ((equal smry org-gcal-cancelled-todo-keyword) (org-gcal--headline))
-      (smry smry)
-      ;; Set headline to “busy” if there is no existing headline and no summary
-      ;; from server.
-      ((or (null (org-gcal--headline))
-           (string-empty-p (org-gcal--headline)))
-       "busy")
-      (t (org-gcal--headline))))
-    (org-entry-put (point) org-gcal-etag-property etag)
-    (when recurrence (org-entry-put (point) "recurrence" (format "%s" recurrence)))
-    (when loc (org-entry-put (point) "LOCATION" loc))
-    (when source
-      (let ((roam-refs
-             (org-entry-get-multivalued-property (point) "ROAM_REFS"))
-            (link (org-entry-get (point) "link")))
-        (cond
-         ;; ROAM_REFS can contain multiple references, but only bare URLs are
-         ;; supported. To make sure we can round-trip between ROAM_REFS and
-         ;; Google Calendar, only import to ROAM_REFS if there is no title in
-         ;; the source, and if ROAM_REFS has at most one entry.
-         ((and (null link)
-               (<= (length roam-refs) 1)
-               (or (null (plist-get source :title))
-                   (string-empty-p (plist-get source :title))))
-          (org-entry-put (point) "ROAM_REFS"
-                         (plist-get source :url)))
-         (t
-          (org-entry-put (point) "link"
-                         (org-link-make-string
-                          (plist-get source :url)
-                          (plist-get source :title)))))))
-    (when transparency (org-entry-put (point) "TRANSPARENCY" transparency))
-    (when meet
-      (org-entry-put
-       (point)
-       "HANGOUTS"
-       (format "[[%s][%s]]"
-               meet
-               "Join Hangouts Meet")))
-    (org-entry-put (point) org-gcal-calendar-id-property calendar-id)
-    (org-gcal--put-id (point) calendar-id event-id)
-    ;; Insert event time and description in :ORG-GCAL: drawer, erasing the
-    ;; current contents.
-    (org-gcal--back-to-heading)
-    (setq elem (org-element-at-point))
-    (save-excursion
-      (when (re-search-forward
-             (format
-              "^[ \t]*:%s:[^z-a]*?\n[ \t]*:END:[ \t]*\n?"
-              (regexp-quote org-gcal-drawer-name))
-             (save-excursion (outline-next-heading) (point))
-             'noerror)
-        (replace-match "" 'fixedcase)))
-    (unless (re-search-forward ":PROPERTIES:[^z-a]*?:END:"
-                               (save-excursion (outline-next-heading) (point))
-                               'noerror)
-      (message "PROPERTIES not found: %s (%s) %d"
-               (buffer-name) (buffer-file-name) (point)))
-    (end-of-line)
-    (newline)
-    (insert (format ":%s:" org-gcal-drawer-name))
-    (newline)
-    ;; Keep existing timestamps for parent recurring events.
-    (when (and recurrence old-start old-end)
-      (setq start old-start
-            end old-end))
-    (let*
-        ((timestamp
-          (if (or (string= start end) (org-gcal--alldayp start end))
-              (org-gcal--format-iso2org start)
-            (if (and
-                 (= (plist-get (org-gcal--parse-date start) :year)
-                    (plist-get (org-gcal--parse-date end)   :year))
-                 (= (plist-get (org-gcal--parse-date start) :mon)
-                    (plist-get (org-gcal--parse-date end)   :mon))
-                 (= (plist-get (org-gcal--parse-date start) :day)
-                    (plist-get (org-gcal--parse-date end)   :day)))
-                (format "<%s-%s>"
-                        (org-gcal--format-date start "%Y-%m-%d %a %H:%M")
-                        (org-gcal--format-date end "%H:%M"))
-              (format "%s--%s"
-                      (org-gcal--format-iso2org start)
-                      (org-gcal--format-iso2org
-                       (if (< 11 (length end))
-                           end
-                         (org-gcal--iso-previous-day end))))))))
-      (if (org-element-property :scheduled elem)
-          (unless (and recurrence old-start)
-            ;; Ensure CLOSED timestamp isn’t wiped out by ‘org-gcal-sync’ (see
-            ;; https://github.com/kidd/org-gcal.el/issues/218).
-            (let ((org-closed-keep-when-no-todo t))
-              (org-schedule nil timestamp)))
-        (insert timestamp)
-        (newline)
-        (when desc (newline))))
-    ;; Insert event description if present.
-    (when desc
-      (insert (replace-regexp-in-string "^\*" "✱" desc))
-      (insert (if (string= "\n" (org-gcal--safe-substring desc -1)) "" "\n")))
-    (insert ":END:")
-    (when (org-gcal--event-cancelled-p event)
+         (recurrence (plist-get event :recurrence)))
+    (org-combine-change-calls heading-begin heading-end
+      (when loc (replace-regexp-in-string "\n" ", " loc))
+      (org-edit-headline
+       (cond
+        ;; Don’t update headline if the new summary is the same as the CANCELLED
+        ;; todo keyword.
+        ((equal smry org-gcal-cancelled-todo-keyword) (org-gcal--headline))
+        (smry smry)
+        ;; Set headline to “busy” if there is no existing headline and no summary
+        ;; from server.
+        ((or (null (org-gcal--headline))
+             (string-empty-p (org-gcal--headline)))
+         "busy")
+        (t (org-gcal--headline))))
+      (org-entry-put (point) org-gcal-etag-property etag)
+      (when recurrence (org-entry-put (point) "recurrence" (format "%s" recurrence)))
+      (when loc (org-entry-put (point) "LOCATION" loc))
+      (when source
+        (let ((roam-refs
+               (org-entry-get-multivalued-property (point) "ROAM_REFS"))
+              (link (org-entry-get (point) "link")))
+          (cond
+           ;; ROAM_REFS can contain multiple references, but only bare URLs are
+           ;; supported. To make sure we can round-trip between ROAM_REFS and
+           ;; Google Calendar, only import to ROAM_REFS if there is no title in
+           ;; the source, and if ROAM_REFS has at most one entry.
+           ((and (null link)
+                 (<= (length roam-refs) 1)
+                 (or (null (plist-get source :title))
+                     (string-empty-p (plist-get source :title))))
+            (org-entry-put (point) "ROAM_REFS"
+                           (plist-get source :url)))
+           (t
+            (org-entry-put (point) "link"
+                           (org-link-make-string
+                            (plist-get source :url)
+                            (plist-get source :title)))))))
+      (when transparency (org-entry-put (point) "TRANSPARENCY" transparency))
+      (when meet
+        (org-entry-put
+         (point)
+         "HANGOUTS"
+         (format "[[%s][%s]]"
+                 meet
+                 "Join Hangouts Meet")))
+      (org-entry-put (point) org-gcal-calendar-id-property calendar-id)
+      (org-gcal--put-id (point) calendar-id event-id)
+      ;; Insert event time and description in :ORG-GCAL: drawer, erasing the
+      ;; current contents.
+      (org-gcal--back-to-heading)
+      (setq elem (org-element-at-point))
       (save-excursion
-        (org-back-to-heading t)
-        (org-gcal--handle-cancelled-entry)))
-    ;; (org-gcal-tmp-dbgmsg "update-mode %S org-gcal-after-update-entry-functions %S"
-    ;;          update-mode org-gcal-after-update-entry-functions)
-    (when update-mode
-      (cl-dolist (f org-gcal-after-update-entry-functions)
+        (when (re-search-forward
+               (format
+                "^[ \t]*:%s:[^z-a]*?\n[ \t]*:END:[ \t]*\n?"
+                (regexp-quote org-gcal-drawer-name))
+               (save-excursion (outline-next-heading) (point))
+               'noerror)
+          (replace-match "" 'fixedcase)))
+      (unless (re-search-forward ":PROPERTIES:[^z-a]*?:END:"
+                                 (save-excursion (outline-next-heading) (point))
+                                 'noerror)
+        (message "PROPERTIES not found: %s (%s) %d"
+                 (buffer-name) (buffer-file-name) (point)))
+      (end-of-line)
+      (newline)
+      (insert (format ":%s:" org-gcal-drawer-name))
+      (newline)
+      ;; Keep existing timestamps for parent recurring events.
+      (when (and recurrence old-start old-end)
+        (setq start old-start
+              end old-end))
+      (let*
+          ((timestamp
+            (if (or (string= start end) (org-gcal--alldayp start end))
+                (org-gcal--format-iso2org start)
+              (if (and
+                   (= (plist-get (org-gcal--parse-date start) :year)
+                      (plist-get (org-gcal--parse-date end)   :year))
+                   (= (plist-get (org-gcal--parse-date start) :mon)
+                      (plist-get (org-gcal--parse-date end)   :mon))
+                   (= (plist-get (org-gcal--parse-date start) :day)
+                      (plist-get (org-gcal--parse-date end)   :day)))
+                  (format "<%s-%s>"
+                          (org-gcal--format-date start "%Y-%m-%d %a %H:%M")
+                          (org-gcal--format-date end "%H:%M"))
+                (format "%s--%s"
+                        (org-gcal--format-iso2org start)
+                        (org-gcal--format-iso2org
+                         (if (< 11 (length end))
+                             end
+                           (org-gcal--iso-previous-day end))))))))
+        (if (org-element-property :scheduled elem)
+            (unless (and recurrence old-start)
+              ;; Ensure CLOSED timestamp isn’t wiped out by ‘org-gcal-sync’ (see
+              ;; https://github.com/kidd/org-gcal.el/issues/218).
+              (let ((org-closed-keep-when-no-todo t))
+                (org-schedule nil timestamp)))
+          (insert timestamp)
+          (newline)
+          (when desc (newline))))
+      ;; Insert event description if present.
+      (when desc
+        (insert (replace-regexp-in-string "^\*" "✱" desc))
+        (insert (if (string= "\n" (org-gcal--safe-substring desc -1)) "" "\n")))
+      (insert ":END:")
+      (when (org-gcal--event-cancelled-p event)
         (save-excursion
           (org-back-to-heading t)
-          (funcall f calendar-id event update-mode))))))
+          (org-gcal--handle-cancelled-entry)))
+      ;; (org-gcal-tmp-dbgmsg "update-mode %S org-gcal-after-update-entry-functions %S"
+      ;;          update-mode org-gcal-after-update-entry-functions)
+      (when update-mode
+        (cl-dolist (f org-gcal-after-update-entry-functions)
+          (save-excursion
+            (org-back-to-heading t)
+            (funcall f calendar-id event update-mode)))))))
 
 
 (defun org-gcal--handle-cancelled-entry ()
