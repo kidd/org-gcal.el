@@ -3678,29 +3678,3 @@ For URL and SETTINGS see ‘org-gcal--aio-request’."
 (provide 'org-gcal)
 
 ;;; org-gcal.el ends here
-
-(lambda
-  (&rest args)
-  (let*
-      ((promise
-        (aio-promise))
-       (iter
-        (apply
-         (iter2-lambda nil
-           (aio-resolve promise
-                        (condition-case error
-                            (let
-                                ((result
-                                  (progn
-                                    (aio-await
-                                     (aio-sleep 2 'foobar))
-                                    'baz)))
-                              (lambda nil result))
-                          (error
-                           (lambda nil
-                             (signal
-                              (car error)
-                              (cdr error)))))))
-         args)))
-    (prog1 promise
-      (aio--step iter promise nil))))
