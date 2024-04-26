@@ -92,7 +92,7 @@
    (replace-regexp-in-string
     "\"dateTime\": \"2019-10-06T21:00:00-07:00\""
     "\"date\": \"2019-10-07\""
-                             org-gcal-test-event-json)))
+    org-gcal-test-event-json)))
 
 (defmacro org-gcal-test--with-temp-buffer (contents &rest body)
   "Create a ‘org-mode’ enabled temp buffer with CONTENTS.
@@ -139,7 +139,7 @@ always located at the beginning of the buffer."
          (let ((data '(:foo :bar)))
            (org-gcal--save-sexp data file)
            (should (string-equal (buffer-string)
-                          ""))
+                                 ""))
            (should (equal (org-gcal--read-file-contents file)
                           `(:token ,data :elem nil)))
            (setq data '(:baz :quux))
@@ -165,7 +165,7 @@ object."
      (should (equal (org-element-property :LOCATION elem)
                     "Foobar's desk"))
      (should (equal (org-element-property :LINK elem)
-              "[[https://google.com][Google]]"))
+                    "[[https://google.com][Google]]"))
      (should (equal (org-element-property :TRANSPARENCY elem)
                     "opaque"))
      (should (equal (org-element-property :CALENDAR-ID elem)
@@ -219,7 +219,7 @@ Old event description
      (should (equal (org-element-property :LOCATION elem)
                     "Foobar's desk"))
      (should (equal (org-element-property :LINK elem)
-              "[[https://google.com][Google]]"))
+                    "[[https://google.com][Google]]"))
      (should (equal (org-element-property :TRANSPARENCY elem)
                     "opaque"))
      (should (equal (org-element-property :CALENDAR-ID elem)
@@ -465,7 +465,7 @@ Second paragraph
   "Same as ‘org-gcal-test--update-existing-entry’, but with SCHEDULED
 property."
   (org-gcal-test--with-temp-buffer
-      "\
+   "\
 * Old event summary
 SCHEDULED: <9999-10-06 Sun 17:00-21:00>
 :PROPERTIES:
@@ -480,37 +480,37 @@ SCHEDULED: <9999-10-06 Sun 17:00-21:00>
 Old event description
 :END:
 "
-    (org-gcal--update-entry org-gcal-test-calendar-id
-                            org-gcal-test-event)
-    (org-back-to-heading)
-    (let ((elem (org-element-at-point)))
-      (should (equal (org-element-property
-                      :raw-value
-                      (org-element-property :scheduled elem))
-                     "<2019-10-06 Sun 17:00-21:00>"))
-      (should (equal (org-gcal-test--title-to-string elem)
-                     "My event summary"))
-      (should (equal (org-element-property :ETAG elem)
-                     "\"12344321\""))
-      (should (equal (org-element-property :LOCATION elem)
-                     "Foobar's desk"))
-      (should (equal (org-element-property :LINK elem)
-                     "[[https://google.com][Google]]"))
-      (should (equal (org-element-property :TRANSPARENCY elem)
-                     "opaque"))
-      (should (equal (org-element-property :CALENDAR-ID elem)
-                     "foo@foobar.com"))
-      (should (equal (org-element-property :ENTRY-ID elem)
-                     "foobar1234/foo@foobar.com")))
-    ;; Check contents of "org-gcal" drawer
-    (re-search-forward ":org-gcal:")
-    (let ((elem (org-element-at-point)))
-      (should (equal (org-element-property :drawer-name elem)
-                     "org-gcal"))
-      (should (equal (buffer-substring-no-properties
-                      (org-element-property :contents-begin elem)
-                      (org-element-property :contents-end elem))
-                     "\
+   (org-gcal--update-entry org-gcal-test-calendar-id
+                           org-gcal-test-event)
+   (org-back-to-heading)
+   (let ((elem (org-element-at-point)))
+     (should (equal (org-element-property
+                     :raw-value
+                     (org-element-property :scheduled elem))
+                    "<2019-10-06 Sun 17:00-21:00>"))
+     (should (equal (org-gcal-test--title-to-string elem)
+                    "My event summary"))
+     (should (equal (org-element-property :ETAG elem)
+                    "\"12344321\""))
+     (should (equal (org-element-property :LOCATION elem)
+                    "Foobar's desk"))
+     (should (equal (org-element-property :LINK elem)
+                    "[[https://google.com][Google]]"))
+     (should (equal (org-element-property :TRANSPARENCY elem)
+                    "opaque"))
+     (should (equal (org-element-property :CALENDAR-ID elem)
+                    "foo@foobar.com"))
+     (should (equal (org-element-property :ENTRY-ID elem)
+                    "foobar1234/foo@foobar.com")))
+   ;; Check contents of "org-gcal" drawer
+   (re-search-forward ":org-gcal:")
+   (let ((elem (org-element-at-point)))
+     (should (equal (org-element-property :drawer-name elem)
+                    "org-gcal"))
+     (should (equal (buffer-substring-no-properties
+                     (org-element-property :contents-begin elem)
+                     (org-element-property :contents-end elem))
+                    "\
 My event description
 
 Second paragraph
@@ -519,7 +519,7 @@ Second paragraph
 (ert-deftest org-gcal-test--update-existing-entry-with-id ()
   "Verify that existing IDs in an existing headline will be preserved."
   (org-gcal-test--with-temp-buffer
-      "\
+   "\
 * Old event summary
 :PROPERTIES:
 :LOCATION: Somewhere else
@@ -534,36 +534,36 @@ Second paragraph
 Old event description
 :END:
 "
-    (org-gcal--update-entry org-gcal-test-calendar-id
-                            org-gcal-test-event)
-    (org-back-to-heading)
-    (let ((elem (org-element-at-point)))
-      (should (equal (org-gcal-test--title-to-string elem)
-                     "My event summary"))
-      (should (equal (org-element-property :ETAG elem)
-                     "\"12344321\""))
-      (should (equal (org-element-property :LOCATION elem)
-                     "Foobar's desk"))
-      (should (equal (org-element-property :LINK elem)
-                     "[[https://google.com][Google]]"))
-      (should (equal (org-element-property :TRANSPARENCY elem)
-                     "opaque"))
-      (should (equal (org-element-property :CALENDAR-ID elem)
-                     "foo@foobar.com")))
-    ;; The canonical ID should be that generated by org-gcal.
-    (should (equal (org-gcal--all-property-local-values (point) org-gcal-entry-id-property nil)
-                   '("foobar1234/foo@foobar.com")))
-    (should (equal (org-entry-get (point) org-gcal-entry-id-property)
-                   '"foobar1234/foo@foobar.com"))
-    ;; Check contents of "org-gcal" drawer
-    (re-search-forward ":org-gcal:")
-    (let ((elem (org-element-at-point)))
-      (should (equal (org-element-property :drawer-name elem)
-                     "org-gcal"))
-      (should (equal (buffer-substring-no-properties
-                      (org-element-property :contents-begin elem)
-                      (org-element-property :contents-end elem))
-                     "\
+   (org-gcal--update-entry org-gcal-test-calendar-id
+                           org-gcal-test-event)
+   (org-back-to-heading)
+   (let ((elem (org-element-at-point)))
+     (should (equal (org-gcal-test--title-to-string elem)
+                    "My event summary"))
+     (should (equal (org-element-property :ETAG elem)
+                    "\"12344321\""))
+     (should (equal (org-element-property :LOCATION elem)
+                    "Foobar's desk"))
+     (should (equal (org-element-property :LINK elem)
+                    "[[https://google.com][Google]]"))
+     (should (equal (org-element-property :TRANSPARENCY elem)
+                    "opaque"))
+     (should (equal (org-element-property :CALENDAR-ID elem)
+                    "foo@foobar.com")))
+   ;; The canonical ID should be that generated by org-gcal.
+   (should (equal (org-gcal--all-property-local-values (point) org-gcal-entry-id-property nil)
+                  '("foobar1234/foo@foobar.com")))
+   (should (equal (org-entry-get (point) org-gcal-entry-id-property)
+                  '"foobar1234/foo@foobar.com"))
+   ;; Check contents of "org-gcal" drawer
+   (re-search-forward ":org-gcal:")
+   (let ((elem (org-element-at-point)))
+     (should (equal (org-element-property :drawer-name elem)
+                    "org-gcal"))
+     (should (equal (buffer-substring-no-properties
+                     (org-element-property :contents-begin elem)
+                     (org-element-property :contents-end elem))
+                    "\
 <2019-10-06 Sun 17:00-21:00>
 
 My event description
@@ -611,7 +611,7 @@ Second paragraph
   "Verify that ‘org-gcal-post-to-point’ updates an event using the data
 returned from the Google Calendar API."
   (org-gcal-test--with-temp-buffer
-      "\
+   "\
 * Original summary
 :PROPERTIES:
 :ETag:     \"12344321\"
@@ -629,51 +629,51 @@ Original description
 Original second paragraph
 :END:
 "
-    (defvar update-entry-hook-called nil)
-    (setq update-entry-hook-called nil)
-    (let (org-gcal-after-update-entry-functions)
-      (defun update-entry-hook (calendar-id event update-mode)
-        (message "update-entry-hook %S %S %S" calendar-id event update-mode)
-        (setq update-entry-hook-called t))
-      (add-hook 'org-gcal-after-update-entry-functions #'update-entry-hook)
-      (with-mock
-        (stub org-gcal--time-zone => '(0 "UTC"))
-        (stub org-generic-id-add-location => nil)
-        (stub org-gcal--get-access-token => "my_access_token")
-        (stub org-gcal--refresh-token => (deferred:succeed "test_access_token"))
-        (stub request-deferred =>
-              (deferred:succeed
-                (make-request-response
-                 :status-code 200
-                 :data org-gcal-test-event)))
-        (let ((org-gcal-managed-post-at-point-update-existing 'always-push))
-          (org-gcal-post-at-point)
-          (org-back-to-heading)
-          (should (equal update-entry-hook-called t))
-          (let ((elem (org-element-at-point)))
-            (should (equal (org-gcal-test--title-to-string elem)
-                           "My event summary"))
-            (should (equal (org-element-property :ETAG elem)
-                           "\"12344321\""))
-            (should (equal (org-element-property :LOCATION elem)
-                           "Foobar's desk"))
-            (should (equal (org-element-property :LINK elem)
-                           "[[https://google.com][Google]]"))
-            (should (equal (org-element-property :TRANSPARENCY elem)
-                           "opaque"))
-            (should (equal (org-element-property :CALENDAR-ID elem)
-                           "foo@foobar.com"))
-            (should (equal (org-element-property :ENTRY-ID elem)
-                           "foobar1234/foo@foobar.com")))
-          ;; Check contents of "org-gcal" drawer
-          (re-search-forward ":org-gcal:")
-          (let ((elem (org-element-at-point)))
-            (should (equal (org-element-property :drawer-name elem)
-                           "org-gcal"))
-            (should (equal (buffer-substring-no-properties
-                            (org-element-property :contents-begin elem)
-                            (org-element-property :contents-end elem))
-                           "\
+   (defvar update-entry-hook-called nil)
+   (setq update-entry-hook-called nil)
+   (let (org-gcal-after-update-entry-functions)
+     (defun update-entry-hook (calendar-id event update-mode)
+       (message "update-entry-hook %S %S %S" calendar-id event update-mode)
+       (setq update-entry-hook-called t))
+     (add-hook 'org-gcal-after-update-entry-functions #'update-entry-hook)
+     (with-mock
+      (stub org-gcal--time-zone => '(0 "UTC"))
+      (stub org-generic-id-add-location => nil)
+      (stub org-gcal--get-access-token => "my_access_token")
+      (stub org-gcal--refresh-token => (deferred:succeed "test_access_token"))
+      (stub request-deferred =>
+            (deferred:succeed
+             (make-request-response
+              :status-code 200
+              :data org-gcal-test-event)))
+      (let ((org-gcal-managed-post-at-point-update-existing 'always-push))
+        (org-gcal-post-at-point)
+        (org-back-to-heading)
+        (should (equal update-entry-hook-called t))
+        (let ((elem (org-element-at-point)))
+          (should (equal (org-gcal-test--title-to-string elem)
+                         "My event summary"))
+          (should (equal (org-element-property :ETAG elem)
+                         "\"12344321\""))
+          (should (equal (org-element-property :LOCATION elem)
+                         "Foobar's desk"))
+          (should (equal (org-element-property :LINK elem)
+                         "[[https://google.com][Google]]"))
+          (should (equal (org-element-property :TRANSPARENCY elem)
+                         "opaque"))
+          (should (equal (org-element-property :CALENDAR-ID elem)
+                         "foo@foobar.com"))
+          (should (equal (org-element-property :ENTRY-ID elem)
+                         "foobar1234/foo@foobar.com")))
+        ;; Check contents of "org-gcal" drawer
+        (re-search-forward ":org-gcal:")
+        (let ((elem (org-element-at-point)))
+          (should (equal (org-element-property :drawer-name elem)
+                         "org-gcal"))
+          (should (equal (buffer-substring-no-properties
+                          (org-element-property :contents-begin elem)
+                          (org-element-property :contents-end elem))
+                         "\
 <2019-10-06 Sun 17:00-21:00>
 
 My event description
@@ -685,7 +685,7 @@ Second paragraph
   "Verify ‘org-gcal-post-at-point’ with ‘org-gcal-managed-update-existing-mode’
 set to \"gcal\"."
   (org-gcal-test--with-temp-buffer
-      "\
+   "\
 * My event summary
 :PROPERTIES:
 :ETag:     \"12344321\"
@@ -703,27 +703,27 @@ My event description
 Second paragraph
 :END:
 "
-    (with-mock
-      (stub org-gcal--time-zone => '(0 "UTC"))
-      (stub org-generic-id-add-location => nil)
-      (stub org-gcal--get-access-token => "my_access_token")
-      (stub org-gcal--refresh-token => (deferred:succeed "test_access_token"))
-      (mock (y-or-n-p *) => nil)
-      (mock (org-gcal--post-event "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
-                                  "My event summary" "Foobar's desk"
-                                  `((url . "https://google.com") (title . "Google"))
-                                  "My event description\n\nSecond paragraph"
-                                  "foo@foobar.com"
-                                  * "opaque" "\"12344321\"" "foobar1234"
-                                  * * t))
-      (let ((org-gcal-managed-update-existing-mode "gcal"))
-        (org-gcal-post-at-point)))))
+   (with-mock
+    (stub org-gcal--time-zone => '(0 "UTC"))
+    (stub org-generic-id-add-location => nil)
+    (stub org-gcal--get-access-token => "my_access_token")
+    (stub org-gcal--refresh-token => (deferred:succeed "test_access_token"))
+    (mock (y-or-n-p *) => nil)
+    (mock (org-gcal--post-event "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
+                                "My event summary" "Foobar's desk"
+                                `((url . "https://google.com") (title . "Google"))
+                                "My event description\n\nSecond paragraph"
+                                "foo@foobar.com"
+                                * "opaque" "\"12344321\"" "foobar1234"
+                                * * t))
+    (let ((org-gcal-managed-update-existing-mode "gcal"))
+      (org-gcal-post-at-point)))))
 
 (ert-deftest org-gcal-test--post-at-point-managed-update-existing-org ()
   "Verify ‘org-gcal-post-at-point’ with ‘org-gcal-managed-update-existing-mode’
 set to \"org\"."
   (org-gcal-test--with-temp-buffer
-      "\
+   "\
 * My event summary
 :PROPERTIES:
 :ETag:     \"12344321\"
@@ -741,26 +741,26 @@ My event description
 Second paragraph
 :END:
 "
-    (with-mock
-      (stub org-gcal--time-zone => '(0 "UTC"))
-      (stub org-generic-id-add-location => nil)
-      (stub org-gcal--get-access-token => "my_access_token")
-      (stub org-gcal--refresh-token => (deferred:succeed "test_access_token"))
-      (mock (org-gcal--post-event "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
-                                  "My event summary" "Foobar's desk"
-                                  `((url . "https://google.com") (title . "Google"))
-                                  "My event description\n\nSecond paragraph"
-                                  "foo@foobar.com"
-                                  * "opaque" "\"12344321\"" "foobar1234"
-                                  * * nil))
-      (let ((org-gcal-managed-update-existing-mode "org"))
-        (org-gcal-post-at-point)))))
+   (with-mock
+    (stub org-gcal--time-zone => '(0 "UTC"))
+    (stub org-generic-id-add-location => nil)
+    (stub org-gcal--get-access-token => "my_access_token")
+    (stub org-gcal--refresh-token => (deferred:succeed "test_access_token"))
+    (mock (org-gcal--post-event "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
+                                "My event summary" "Foobar's desk"
+                                `((url . "https://google.com") (title . "Google"))
+                                "My event description\n\nSecond paragraph"
+                                "foo@foobar.com"
+                                * "opaque" "\"12344321\"" "foobar1234"
+                                * * nil))
+    (let ((org-gcal-managed-update-existing-mode "org"))
+      (org-gcal-post-at-point)))))
 
 (ert-deftest org-gcal-test--post-at-point-managed-create-from-entry-gcal ()
   "Verify ‘org-gcal-post-at-point’ with ‘org-gcal-managed-create-from-entry-mode’
 set to \"gcal\"."
   (org-gcal-test--with-temp-buffer
-      "\
+   "\
 * My event summary
 :PROPERTIES:
 :ETag:     \"12344321\"
@@ -776,28 +776,28 @@ My event description
 Second paragraph
 :END:
 "
-    (with-mock
-      (stub org-gcal--time-zone => '(0 "UTC"))
-      (stub org-generic-id-add-location => nil)
-      (stub org-gcal--get-access-token => "my_access_token")
-      (stub org-gcal--refresh-token => (deferred:succeed "test_access_token"))
-      (mock (y-or-n-p *) => nil)
-      (mock (org-gcal--post-event "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
-                                  "My event summary" "Foobar's desk"
-                                  nil
-                                  "My event description\n\nSecond paragraph"
-                                  "foo@foobar.com"
-                                  * "opaque" "\"12344321\"" nil
-                                  * * t))
-      (let ((org-gcal-managed-update-existing-mode "gcal")
-            (org-gcal-managed-create-from-entry-mode "gcal"))
-        (org-gcal-post-at-point)))))
+   (with-mock
+    (stub org-gcal--time-zone => '(0 "UTC"))
+    (stub org-generic-id-add-location => nil)
+    (stub org-gcal--get-access-token => "my_access_token")
+    (stub org-gcal--refresh-token => (deferred:succeed "test_access_token"))
+    (mock (y-or-n-p *) => nil)
+    (mock (org-gcal--post-event "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
+                                "My event summary" "Foobar's desk"
+                                nil
+                                "My event description\n\nSecond paragraph"
+                                "foo@foobar.com"
+                                * "opaque" "\"12344321\"" nil
+                                * * t))
+    (let ((org-gcal-managed-update-existing-mode "gcal")
+          (org-gcal-managed-create-from-entry-mode "gcal"))
+      (org-gcal-post-at-point)))))
 
 (ert-deftest org-gcal-test--post-at-point-managed-create-from-entry-org ()
   "Verify ‘org-gcal-post-at-point’ with ‘org-gcal-managed-create-from-entry-mode’
 set to \"org\"."
   (org-gcal-test--with-temp-buffer
-      "\
+   "\
 * My event summary
 :PROPERTIES:
 :ETag:     \"12344321\"
@@ -814,21 +814,21 @@ My event description
 Second paragraph
 :END:
 "
-    (with-mock
-      (stub org-gcal--time-zone => '(0 "UTC"))
-      (stub org-generic-id-add-location => nil)
-      (stub org-gcal--get-access-token => "my_access_token")
-      (stub org-gcal--refresh-token => (deferred:succeed "test_access_token"))
-      (mock (org-gcal--post-event "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
-                                  "My event summary" "Foobar's desk"
-                                  `((url . "https://google.com") (title . "Google"))
-                                  "My event description\n\nSecond paragraph"
-                                  "foo@foobar.com"
-                                  * "opaque" "\"12344321\"" nil
-                                  * * nil))
-      (let ((org-gcal-managed-update-existing-mode "gcal")
-            (org-gcal-managed-create-from-entry-mode "org"))
-        (org-gcal-post-at-point)))))
+   (with-mock
+    (stub org-gcal--time-zone => '(0 "UTC"))
+    (stub org-generic-id-add-location => nil)
+    (stub org-gcal--get-access-token => "my_access_token")
+    (stub org-gcal--refresh-token => (deferred:succeed "test_access_token"))
+    (mock (org-gcal--post-event "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
+                                "My event summary" "Foobar's desk"
+                                `((url . "https://google.com") (title . "Google"))
+                                "My event description\n\nSecond paragraph"
+                                "foo@foobar.com"
+                                * "opaque" "\"12344321\"" nil
+                                * * nil))
+    (let ((org-gcal-managed-update-existing-mode "gcal")
+          (org-gcal-managed-create-from-entry-mode "org"))
+      (org-gcal-post-at-point)))))
 
 (ert-deftest org-gcal-test--post-at-point-old-id-property ()
   "Verify that \":ID:\" property is read for event ID by \
@@ -922,21 +922,21 @@ My event description
 Second paragraph
 :END:
 "
-    (with-mock
-      (stub org-gcal--time-zone => '(0 "UTC"))
-      (stub org-generic-id-add-location => nil)
-     (stub org-gcal--get-access-token => "my_access_token")
-     (stub org-gcal--refresh-token => (deferred:succeed "test_access_token"))
-     (mock (org-gcal--post-event "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
-                                 "My event summary" "Foobar's desk"
-                                 `((url . "https://google.com") (title . "Google"))
-                                 "My event description\n\nSecond paragraph"
-                                 "foo@foobar.com"
-                                 * "opaque" nil nil
-                                 * * *))
-     (org-gcal-post-at-point)))
+   (with-mock
+    (stub org-gcal--time-zone => '(0 "UTC"))
+    (stub org-generic-id-add-location => nil)
+    (stub org-gcal--get-access-token => "my_access_token")
+    (stub org-gcal--refresh-token => (deferred:succeed "test_access_token"))
+    (mock (org-gcal--post-event "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
+                                "My event summary" "Foobar's desk"
+                                `((url . "https://google.com") (title . "Google"))
+                                "My event description\n\nSecond paragraph"
+                                "foo@foobar.com"
+                                * "opaque" nil nil
+                                * * *))
+    (org-gcal-post-at-point)))
   (org-gcal-test--with-temp-buffer
-      "\
+   "\
 * My event summary
 :PROPERTIES:
 :LOCATION: Foobar's desk
@@ -953,19 +953,19 @@ My event description
 Second paragraph
 :END:
 "
-    (with-mock
-      (stub org-gcal--time-zone => '(0 "UTC"))
-      (stub org-generic-id-add-location => nil)
-     (stub org-gcal--get-access-token => "my_access_token")
-     (stub org-gcal--refresh-token => (deferred:succeed "test_access_token"))
-     (mock (org-gcal--post-event "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
-                                 "My event summary" "Foobar's desk"
-                                 `((url . "https://google.com") (title . "Google"))
-                                 "My event description\n\nSecond paragraph"
-                                 "foo@foobar.com"
-                                 * "opaque" nil nil
-                                 * * *))
-     (org-gcal-post-at-point))))
+   (with-mock
+    (stub org-gcal--time-zone => '(0 "UTC"))
+    (stub org-generic-id-add-location => nil)
+    (stub org-gcal--get-access-token => "my_access_token")
+    (stub org-gcal--refresh-token => (deferred:succeed "test_access_token"))
+    (mock (org-gcal--post-event "2019-10-06T17:00:00Z" "2019-10-06T21:00:00Z"
+                                "My event summary" "Foobar's desk"
+                                `((url . "https://google.com") (title . "Google"))
+                                "My event description\n\nSecond paragraph"
+                                "foo@foobar.com"
+                                * "opaque" nil nil
+                                * * *))
+    (org-gcal-post-at-point))))
 
 (ert-deftest org-gcal-test--post-at-point-no-properties ()
   "Verify that ‘org-gcal-post-to-point’ fills in entries with no relevant
@@ -1118,13 +1118,13 @@ Second paragraph
       (stub alert => t)
       (stub request-deferred =>
             (deferred:succeed
-              (make-request-response
-               :status-code 500
-               :error-thrown '(error . nil))))
+             (make-request-response
+              :status-code 500
+              :error-thrown '(error . nil))))
       (deferred:sync!
-        (deferred:$
-          (org-gcal-delete-at-point)
-          (deferred:error it #'ignore)))
+       (deferred:$
+        (org-gcal-delete-at-point)
+        (deferred:error it #'ignore)))
       (org-back-to-heading)
       (should (re-search-forward ":org-gcal:" nil 'noerror))))
 
@@ -1140,8 +1140,8 @@ Second paragraph
         (stub y-or-n-p => t)
         (stub request-deferred =>
               (deferred:succeed
-                (make-request-response
-                 :status-code 200)))
+               (make-request-response
+                :status-code 200)))
         (deferred:sync! (org-gcal-delete-at-point))
         (org-back-to-heading)
         (should-not (re-search-forward ":org-gcal:" nil 'noerror)))))
@@ -1158,26 +1158,26 @@ Second paragraph
         (stub y-or-n-p => t)
         (stub request-deferred =>
               (deferred:succeed
-                (make-request-response
-                 :status-code 200)))
+               (make-request-response
+                :status-code 200)))
         (deferred:sync! (org-gcal-delete-at-point))
         (should (equal (buffer-string) "")))))))
 
 
 (ert-deftest org-gcal-test--save-with-full-day-event ()
   "Verify that a full day event will get set correctly."
-   (org-gcal-test--with-temp-buffer
-    "* "
-    (org-gcal--update-entry org-gcal-test-calendar-id
-                            org-gcal-test-full-day-event)
-    (org-back-to-heading)
+  (org-gcal-test--with-temp-buffer
+   "* "
+   (org-gcal--update-entry org-gcal-test-calendar-id
+                           org-gcal-test-full-day-event)
+   (org-back-to-heading)
    ;; Check contents of "org-gcal" drawer
-    (re-search-forward ":org-gcal:")
-    (let ((elem (org-element-at-point)))
-      (should (equal (buffer-substring-no-properties
-                      (org-element-property :contents-begin elem)
-                      (org-element-property :contents-end elem))
-                     "\
+   (re-search-forward ":org-gcal:")
+   (let ((elem (org-element-at-point)))
+     (should (equal (buffer-substring-no-properties
+                     (org-element-property :contents-begin elem)
+                     (org-element-property :contents-end elem))
+                    "\
 <2019-10-06 Sun>
 
 My event description
@@ -1189,18 +1189,18 @@ Second paragraph
   "Verify that a full day event will get set correctly when local-timezone is set."
   (let (
         (org-gcal-local-timezone "Europe/London"))
-   (org-gcal-test--with-temp-buffer
-    "* "
-    (org-gcal--update-entry org-gcal-test-calendar-id
-                            org-gcal-test-full-day-event)
-    (org-back-to-heading)
-   ;; Check contents of "org-gcal" drawer
-    (re-search-forward ":org-gcal:")
-    (let ((elem (org-element-at-point)))
-      (should (equal (buffer-substring-no-properties
-                      (org-element-property :contents-begin elem)
-                      (org-element-property :contents-end elem))
-                     "\
+    (org-gcal-test--with-temp-buffer
+     "* "
+     (org-gcal--update-entry org-gcal-test-calendar-id
+                             org-gcal-test-full-day-event)
+     (org-back-to-heading)
+     ;; Check contents of "org-gcal" drawer
+     (re-search-forward ":org-gcal:")
+     (let ((elem (org-element-at-point)))
+       (should (equal (buffer-substring-no-properties
+                       (org-element-property :contents-begin elem)
+                       (org-element-property :contents-end elem))
+                      "\
 <2019-10-06 Sun>
 
 My event description
@@ -1212,16 +1212,16 @@ Second paragraph
   "Test handling of ERT failures in deferred code. Should fail."
   :expected-result :failed
   (with-mock
-    (stub request-deferred =>
-          (deferred:$
-            (deferred:succeed
-              (ert-fail "Failure"))
-            (deferred:nextc it
-              (lambda (_)
-                (deferred:succeed "Success")))))
-    (should (equal
-             (deferred:sync! (request-deferred))
-             "Success"))))
+   (stub request-deferred =>
+         (deferred:$
+          (deferred:succeed
+           (ert-fail "Failure"))
+          (deferred:nextc it
+                          (lambda (_)
+                            (deferred:succeed "Success")))))
+   (should (equal
+            (deferred:sync! (request-deferred))
+            "Success"))))
 
 (ert-deftest org-gcal-test--convert-time-to-local-timezone()
   (should (equal
@@ -1236,19 +1236,19 @@ Second paragraph
   (should (equal
            (org-gcal--convert-time-to-local-timezone "2021-03-03T11:30:00-08:00" "Europe/London")
            "2021-03-03T19:30:00+0000")))
-  ;; FIXME: Passed in local with Emacs 26.3 and 27.1, Failed in GitHub CI
-  ;; (should (equal
-  ;;          (org-gcal--convert-time-to-local-timezone "2021-03-03T11:30:00-08:00" "Europe/Oslo")
-  ;;          "2021-03-03T20:30:00+0100"))
-  ;; (should (equal
-  ;;          (org-gcal--convert-time-to-local-timezone "2021-03-03T11:30:00-08:00" "America/New_York")
-  ;;          "2021-03-03T14:30:00-0500"))
-  ;; (should (equal
-  ;;          (org-gcal--convert-time-to-local-timezone "2021-03-03T11:30:00-08:00" "America/Los_Angeles")
-  ;;          "2021-03-03T11:30:00-0800"))
-  ;; (should (equal
-  ;;          (org-gcal--convert-time-to-local-timezone "2021-03-03T11:30:00-08:00" "Asia/Shanghai")
-  ;;          "2021-03-04T03:30:00+0800"))
+;; FIXME: Passed in local with Emacs 26.3 and 27.1, Failed in GitHub CI
+;; (should (equal
+;;          (org-gcal--convert-time-to-local-timezone "2021-03-03T11:30:00-08:00" "Europe/Oslo")
+;;          "2021-03-03T20:30:00+0100"))
+;; (should (equal
+;;          (org-gcal--convert-time-to-local-timezone "2021-03-03T11:30:00-08:00" "America/New_York")
+;;          "2021-03-03T14:30:00-0500"))
+;; (should (equal
+;;          (org-gcal--convert-time-to-local-timezone "2021-03-03T11:30:00-08:00" "America/Los_Angeles")
+;;          "2021-03-03T11:30:00-0800"))
+;; (should (equal
+;;          (org-gcal--convert-time-to-local-timezone "2021-03-03T11:30:00-08:00" "Asia/Shanghai")
+;;          "2021-03-04T03:30:00+0800"))
 
 
 (ert-deftest org-gcal-test--headline-archive-old-event ()
@@ -1270,11 +1270,11 @@ under another heading in the same file."
 <2021-01-01 Fri 12:34-14:35>
 "))
     (org-test-with-temp-text-in-file
-        buf
-      (org-test-at-time (format "<%s>" test-time)
-        ;; Ensure property drawer is not indented
-        (setq-local org-adapt-indentation nil)
-        (let* ((target-buf (format "\
+     buf
+     (org-test-at-time (format "<%s>" test-time)
+                       ;; Ensure property drawer is not indented
+                       (setq-local org-adapt-indentation nil)
+                       (let* ((target-buf (format "\
 #+CATEGORY: Test
 
 * Archived
@@ -1288,15 +1288,15 @@ under another heading in the same file."
 :END:
 <2021-01-01 Fri 12:34-14:35>
 "
-                                   test-time
-                                   ; The variable `file' is the current file
-                                   ; name under the macro
-                                   ; `org-test-with-temp-text-in-file'
-                                   file)))
-          (org-gcal--archive-old-event)
-          (let ((bufstr
-                 (buffer-substring-no-properties (point-min) (point-max))))
-            (should (string-equal bufstr target-buf))))))))
+                                                  test-time
+                                        ; The variable `file' is the current file
+                                        ; name under the macro
+                                        ; `org-test-with-temp-text-in-file'
+                                                  file)))
+                         (org-gcal--archive-old-event)
+                         (let ((bufstr
+                                (buffer-substring-no-properties (point-min) (point-max))))
+                           (should (string-equal bufstr target-buf))))))))
 
 ;;; TODO: Figure out mocking for POST/PATCH followed by GET
 ;;; - ‘mock‘ might work for this - the argument list must be specified up
