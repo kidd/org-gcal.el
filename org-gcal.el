@@ -725,16 +725,20 @@ AIO version: ‘org-gcal--sync-event-aio'"
          (calendar-file (cdr calendar-id-file)))
 
     (deferred:$                         ; Migrated to AIO
-      (org-gcal--get-event calendar-id event-id)
-      (deferred:nextc it
-        (lambda (event) (vector (request-response-data event))))
-      (deferred:nextc it
-        (lambda (events)
-          (org-gcal--sync-handle-events calendar-id calendar-file
-                                        events nil nil nil nil)))
-      (deferred:nextc it
-        (lambda (entries)
-          (org-gcal--sync-update-entries calendar-id entries skip-export))))))
+     (org-gcal--get-event calendar-id event-id)
+     (deferred:nextc it
+                     (lambda (event) (vector (request-response-data event))))
+     (deferred:nextc it
+                     (lambda (events)
+                       (deferred:nextc
+                        (deferred:wait-idle 1000)
+                        (lambda ()
+                          (org-gcal--sync-handle-events calendar-id calendar-file
+                                                        events nil nil nil nil)))))
+     ;; (deferred:wait-idle 1000)
+     (deferred:nextc it
+                     (lambda (entries)
+                       (org-gcal--sync-update-entries calendar-id entries skip-export))))))
 
 (aio-iter2-defun org-gcal--sync-event-aio
   (calendar-id-file event-id skip-export)
