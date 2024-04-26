@@ -1257,12 +1257,14 @@ have been moved from the default fetch file.  CALENDAR-ID is defined in
 
 (defun org-gcal--sync-lock ()
   "Activate sync lock."
-  (setq org-gcal--sync-lock t))
+  (setq org-gcal--sync-lock t)
+  (org-gcal-dbgmsg "sync locked"))
 
 (defun org-gcal--sync-unlock ()
   "Deactivate sync lock in case of failed sync."
   (interactive)
-  (setq org-gcal--sync-lock nil))
+  (setq org-gcal--sync-lock nil)
+  (org-gcal-dbgmsg "sync unlocked"))
 
 (defun org-gcal--sync-get-update-existing ()
   "Obtain value of ‘org-gcal-managed-post-at-point-update-existing’ for syncs."
