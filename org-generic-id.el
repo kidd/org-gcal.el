@@ -106,8 +106,8 @@ they would otherwise be garbage collected (after being killed, for example).")
     res))
 
 (persist-defvar
- org-generic-id--last-update-id-time nil
- "Time at which ‘org-generic-id-update-id-locations’ last completed.
+  org-generic-id--last-update-id-time nil
+  "Time at which ‘org-generic-id-update-id-locations’ last completed.
 
 This is a plist mapping each ID-PROP to the last time that ID-PROP was updated.
 For documentation on ID-PROP see ‘org-generic-id-find’.")
@@ -210,8 +210,8 @@ When FILES is given, scan also these files."
          (nfiles (length files))
          (id-regexp
           (rx-to-string `(seq bol (0+ (any "\t "))
-                              ,(format ":%s:" id-prop)
-                              (1+ " ") (not (any " ")))))
+                          ,(format ":%s:" id-prop)
+                          (1+ " ") (not (any " ")))))
          (seen-ids nil)
          (ndup 0)
          (i 0))
@@ -513,9 +513,9 @@ This function converts ID-PROP to a symbol in order to query
    org-generic-id--files (buffer-file-name) (current-buffer)))
 
 (defun org-generic-id--files-kill-buffer-hook ()
- "Update ‘org-generic-id--files’ after a buffer is killed."
- (org-generic-id--files-buffer-hook-impl
-  org-generic-id--files (buffer-file-name) nil))
+  "Update ‘org-generic-id--files’ after a buffer is killed."
+  (org-generic-id--files-buffer-hook-impl
+   org-generic-id--files (buffer-file-name) nil))
 
 (defun org-generic-id--files-buffer-hook-impl (file-to-buf fname buf)
   "Update FILE-TO-BUF to associate FNAME with BUF.
