@@ -3,7 +3,7 @@
 ;; Author: myuhe <yuhei.maeda_at_gmail.com>
 ;; URL: https://github.com/kidd/org-gcal.el
 ;; Version: 0.4.2
-;; Package-Requires: ((aio "1.0") (alert "1.2") (elnode "20190702.1509") (emacs "26.1") (org "9.3") (persist "0.4") (request "20190901") (request-deferred "20181129"))
+;; Package-Requires: ((aio "1.0") (alert "1.2") (elnode "20190702.1509") (emacs "26.1") (oauth2-auto "0.1") (org "9.3") (persist "0.4") (request "20190901") (request-deferred "20181129"))
 ;; Maintainer: Raimon Grau <raimonster@gmail.com>
 ;; Copyright (C) :2014 myuhe all rights reserved.
 ;; Keywords: convenience,
