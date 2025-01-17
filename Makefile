@@ -1,28 +1,21 @@
 THIS_MAKEFILE_DIR = $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-EMACS ?= emacs
-SRC=org-gcal.el org-generic-id.el
-TEST=test/org-gcal-test.el test/org-generic-id-test.el
-BUILD_LOG = build.log
-CASK ?= cask
-PKG_DIR := $(shell $(CASK) package-directory)
-ELCFILES = $(SRC:.el=.elc)
-.DEFAULT_GOAL := all
 
-.PHONY: all clean load-path compile test elpa
+export EMACS ?= $(shell command -v emacs 2>/dev/null)
+CASK_DIR := $(shell cask package-directory)
 
-all: compile test
+$(CASK_DIR): Cask
+	cask install
+	@touch $(CASK_DIR)
 
-clean:
-	rm -f $(ELCFILES) $(BUILD_LOG); rm -rf $(PKG_DIR)
+.PHONY: cask
+cask: $(CASK_DIR)
 
-elpa: $(PKG_DIR)
-$(PKG_DIR): Cask
-	$(CASK) install
-	touch $(PKG_DIR)
-
-compile: $(SRC) elpa
-	$(CASK) build 2>&1 | tee $(BUILD_LOG); \
-	! ( grep -E -e ':(Warning|Error):' $(BUILD_LOG) )
+.PHONY: compile
+compile: cask
+	cask emacs -batch -L . -L test \
+          --eval "(setq byte-compile-error-on-warn t)" \
+	  -f batch-byte-compile $$(cask files); \
+	  (ret=$$? ; cask clean-elc && exit $$ret)
 
 test: $(SRC) $(TEST) elpa
 	$(CASK) exec ert-runner -L $(THIS_MAKEFILE_DIR) \
