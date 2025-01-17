@@ -1,7 +1,9 @@
 (source melpa)
 (source gnu)
 
-(package-descriptor "org-gcal-pkg.el")
+(depends-on "oauth2-auto"
+            :git "https://github.com/telotortium/emacs-oauth2-auto"
+            :branch "main")
 
 (files :defaults)
 
