@@ -18,7 +18,7 @@ clean:
 elpa: $(PKG_DIR)
 $(PKG_DIR): Cask
 	$(CASK) install
-	touch $@
+	touch $(PKG_DIR)
 
 compile: $(SRC) elpa
 	$(CASK) build 2>&1 | tee $(BUILD_LOG); \
