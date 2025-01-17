@@ -4,7 +4,6 @@
 (depends-on "oauth2-auto"
             :git "https://github.com/telotortium/emacs-oauth2-auto"
             :branch "main")
-(package-descriptor "org-gcal-pkg.el")
 
 (files :defaults)
 
