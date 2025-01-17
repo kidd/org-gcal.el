@@ -2,6 +2,8 @@ THIS_MAKEFILE_DIR = $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
 export EMACS ?= emacs
 
+elpa: cask
+
 .PHONY: cask
 cask:
 	cask install
