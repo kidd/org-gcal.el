@@ -1,14 +1,11 @@
 THIS_MAKEFILE_DIR = $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
-export EMACS ?= $(shell command -v emacs 2>/dev/null)
-CASK_DIR := $(shell cask package-directory)
-
-$(CASK_DIR): Cask
-	cask install
-	@touch $(CASK_DIR)
+export EMACS ?= emacs
 
 .PHONY: cask
-cask: $(CASK_DIR)
+cask:
+	cask install
+	@touch cask
 
 .PHONY: compile
 compile: cask
