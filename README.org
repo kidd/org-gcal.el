@@ -173,6 +173,27 @@ To do this, follow these steps:
 
    To get more detailed information you can [[https://digibites.zendesk.com/hc/en-us/articles/200299863-How-do-I-share-my-calendar-with-someone-else-Google-Calendar-or-Outlook-com-][check this link]].
 
+** Terminal/Headless environments
+
+If you're running Emacs in a terminal environment without browser access (such as SSH sessions, headless servers, or Docker containers), you can enable manual authentication mode:
+
+#+begin_src elisp
+(setq oauth2-auto-manually-auth t)
+#+end_src
+
+When this variable is set to =t=, instead of automatically opening a browser window, ~org-gcal~ will:
+1. Display the authorization URL in a message
+2. Wait for you to manually visit the URL in an external browser
+3. Prompt you to copy and paste the authorization code from the redirect URL
+
+*Important*: In manual mode, after you authorize the application in your browser, Google will attempt to redirect to =http://localhost:8080=. Since no server is running on that address, you will see a 404 error page. This is expected behavior. You need to copy the =code= parameter from the browser's address bar (the URL will look like =http://localhost:8080/?code=XXXXXXXX&state=YYYYYYYY=) and paste it into the Emacs prompt.
+
+This is particularly useful for:
+- SSH sessions where browser forwarding is not available
+- Headless server environments
+- Docker containers without GUI support
+- Any environment where automatic browser launching is not desired or possible
+
 ** Different timezone
 
    If you local timezone is different from the Calendar. You can use
@@ -284,7 +305,7 @@ an event from the Google Calendar API:
     API for the event (see [[https://developers.google.com/calendar/v3/version-resources#conditional_modification][the Google Calendar API documentation]]). Used to
     support automatically updating the headline using the most recent event data
     from the API if it has changed on the server since it was last retrieved.
-    
+
     **NOTE**: If the =ETag= property is present on a headline (even if empty (=""=)) and not equal to the value
     stored by the Calendar API, your event will be **overwritten** with the data from the server. In this case,
     you'll see a notification for a HTTP 512. This is intended behavior. If your event is being overwritten when

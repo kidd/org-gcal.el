@@ -77,6 +77,11 @@
   :group 'oauth2-auto
   :type 'alist)
 
+(defcustom oauth2-auto-manually-auth nil
+  "If non-nil, not launch browser automatically."
+  :group 'oauth2-auto
+  :type 'boolean)
+
 (defun oauth2-auto--default-providers ()
   "Default OAuth2 providers."
   (let ((ms-oauth2-url (concat "https://login.microsoftonline.com/"
@@ -399,6 +404,12 @@ INPUT is the raw HTTP request."
 
 
 (aio-defun oauth2-auto--browser-request (provider url-key data-keys extra-alist &optional quiet)
+           (if oauth2-auto-manually-auth
+               (aio-await (oauth2-auto--browser-request-manually provider url-key data-keys extra-alist quiet))
+             (aio-await (oauth2-auto--browser-request-auto provider url-key data-keys extra-alist quiet))))
+
+
+(aio-defun oauth2-auto--browser-request-auto (provider url-key data-keys extra-alist &optional quiet)
   "Open browser for the OAuth2 PROVIDER.
 Browser is opened at url and parameters given by taking URL-KEY and DATA-KEYS
 from the data of the PROVIDER, and adding EXTRA-ALIST.  Then we listen to the
@@ -448,6 +459,39 @@ If QUIET is non-nil, suppress alerts."
           (cons redirect-uri-elt response-alist))
       ; Always kill server-proc
       (delete-process server-proc))))
+
+(aio-defun oauth2-auto--browser-request-manually (provider url-key data-keys extra-alist &optional quiet)
+           "Open browser for the OAuth2 PROVIDER.
+Instead of opening browser, display the authorization URL and wait for user to input the code.
+Browser URL is constructed from url and parameters given by taking URL-KEY and DATA-KEYS
+from the data of the PROVIDER, and adding EXTRA-ALIST.
+
+If QUIET is non-nil, suppress alerts."
+           (let* ((redirect-uri "http://localhost:8080")
+                  (redirect-uri-elt (cons 'redirect_uri redirect-uri))
+                  (very-extra-alist (cons redirect-uri-elt extra-alist))
+                  (provider-info (oauth2-auto--provider-info provider))
+                  (data-alist (oauth2-auto--craft-request-alist
+                               provider-info data-keys very-extra-alist))
+                  (data (oauth2-auto--urlify-request data-alist))
+                  (url (cdr (assoc url-key provider-info)))
+                  (auth-url (concat url "?" data)))
+
+             ;; Instead of opening browser, show URL and wait for code
+             (unless quiet
+               (alert (format "Please visit this URL to authorize:\n%s\n\nAfter authorization, copy the 'code' parameter from the redirect URL and paste it below:"
+                              auth-url)
+                      :title "Emacs OAuth2 login"
+                      :category 'oauth2-auto))
+
+             ;; Wait for user to input the code
+             (let ((code (read-string (format "Please visit this URL to authorize:\n%s\n\nAfter authorization, copy the code from the redirect URL and paste it here.\nEnter authorization code: " auth-url))))
+               ;; return the response, with the 'redirect_uri
+               (cons redirect-uri-elt
+                     (list (cons 'code code)
+                           (cons 'redirect_uri redirect-uri)
+                           (cons 'state (cdr (assoc 'state data-alist))))))))
+
 
 (defconst oauth2-auto--url-unreserved
   "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXY0123456789-_"
