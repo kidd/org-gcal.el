@@ -8,31 +8,38 @@ jobs:
 
     strategy:
       matrix:
-        emacs_version: ['26.1', '26.3', '27.2', '28.2', 'snapshot']
-        cask_version: ['snapshot']
+        emacs_version:
+        - "26.1"
+        - "26.3"
+        - "27.2"
+        - "28.2"
+        - "29.2"
+        - "30.1"
+        - "snapshot"
+        cask_version: ['0.9.0']
 
     steps:
     - name: Checkout org-gcal repo
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4.2.2
 
     - name: Install Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v5.6.0
       with:
         python-version: '3.9'
         architecture: 'x64'
 
     - name: Install Emacs
-      uses: purcell/setup-emacs@master
+      uses: purcell/setup-emacs@11969ffc35972d0aa1a439489e99b4b61a60917c
       with:
         version: ${{matrix.emacs_version}}
 
-    - uses: actions/cache@v2
+    - uses: actions/cache@v4.2.3
       id: cache-cask-packages
       with:
         path: .cask
         key: cache-cask-packages-000
 
-    - uses: actions/cache@v2
+    - uses: actions/cache@v4.2.3
       id: cache-cask-executable
       with:
         path: ~/.cask
@@ -56,7 +63,7 @@ jobs:
 
     - name: SSH into container on failure
       if: ${{ failure() }}
-      uses: telotortium/action-upterm@wait-timeout-minutes
+      uses: lhotari/action-upterm@b0357f23233f5ea6d58947c0c402e0631bab7334  # Current v1 as of 2025-06-16
       with:
         ## limits ssh access and adds the ssh public key for the user which triggered the workflow
         limit-access-to-actor: true

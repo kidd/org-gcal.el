@@ -33,7 +33,7 @@
           ;; When I rescan ID locations, the symlink "/var" is resolved to
           ;; "/private/var" on macOS. The simplest way to fix this is just to
           ;; resolve the symlink manually at the start.
-          (file-truename (make-temp-file "my.org.")))
+          (abbreviate-file-name (file-truename (make-temp-file "my.org."))))
          (org-agenda-files (list org-file))
          (org-generic-id-extra-files nil))
     ;; Reset various variables by saving and reloading.
