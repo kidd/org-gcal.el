@@ -1187,11 +1187,11 @@ or nil if no valid link is found."
       (insert link)
       (org-mode)
       (goto-char (point-min))
-      (when-let ((link-element (car-safe (cdr-safe (org-element-link-parser)))))
-        (let ((link-title-begin (plist-get link-element :contents-begin))
-              (link-title-end (plist-get link-element :contents-end)))
+      (when-let ((link-element (org-element-link-parser)))
+        (let ((link-title-begin (org-element-property :contents-begin link-element))
+              (link-title-end (org-element-property :contents-end link-element)))
           (append
-           `((url . ,(plist-get link-element :raw-link)))
+           `((url . ,(org-element-property :raw-link link-element)))
            (when (and link-title-begin link-title-end)
              `((title
                 . ,(buffer-substring-no-properties
