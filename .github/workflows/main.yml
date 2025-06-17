@@ -56,7 +56,7 @@ jobs:
 
     - name: SSH into container on failure
       if: ${{ failure() }}
-      uses: telotortium/action-upterm@wait-timeout-minutes
+      uses: lhotari/action-upterm@b0357f23233f5ea6d58947c0c402e0631bab7334  # Current v1 as of 2025-06-16
       with:
         ## limits ssh access and adds the ssh public key for the user which triggered the workflow
         limit-access-to-actor: true
