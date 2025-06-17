@@ -8,25 +8,34 @@ PKG_DIR := $(shell $(CASK) package-directory)
 ELCFILES = $(SRC:.el=.elc)
 .DEFAULT_GOAL := all
 
-.PHONY: all clean load-path compile test elpa update-oauth2-auto
+.PHONY: all clean load-path compile test elpa install update-oauth2-auto
 
 all: compile test
 
-clean:
-	rm -f $(ELCFILES) $(BUILD_LOG); rm -rf $(PKG_DIR)
+load-path:
+	$(CASK) load-path
 
+clean:
+	rm -f $(ELCFILES) $(BUILD_LOG)
+	rm -rf $(PKG_DIR)
+	$(CASK) clean-elc
+
+install: elpa
 elpa: $(PKG_DIR)
 $(PKG_DIR): Cask
 	$(CASK) install
 	touch $@
 
-compile: $(SRC) elpa
-	$(CASK) build 2>&1 | tee $(BUILD_LOG); \
-	! ( grep -E -e ':(Warning|Error):' $(BUILD_LOG) )
+compile: $(SRC) $(TEST) elpa
+	$(CASK) emacs -batch -L . -L test \
+	  -f batch-byte-compile $$($(CASK) files) \
+	  $(foreach test,$(TEST),$(addprefix $(THIS_MAKEFILE_DIR)/,$(test)))
 
-test: $(SRC) $(TEST) elpa
-	$(CASK) exec ert-runner -L $(THIS_MAKEFILE_DIR) \
-		$(foreach test,$(TEST),$(addprefix $(THIS_MAKEFILE_DIR)/,$(test)))
+test: $(SRC) $(TEST) elpa compile
+	$(CASK) emacs --batch \
+	-L $(THIS_MAKEFILE_DIR) \
+	$(foreach test,$(TEST),$(addprefix -l $(THIS_MAKEFILE_DIR)/,$(test))) \
+	-f ert-run-tests-batch-and-exit
 
 # Vendor oauth2-auto from my fork until oauth2-auto is added to MELPA.
 update-oauth2-auto:
