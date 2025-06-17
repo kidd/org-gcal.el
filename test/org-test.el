@@ -209,9 +209,16 @@ If the string \"<point>\" appears in TEXT then remove it and
 place the point there before running BODY, otherwise place the
 point at the beginning of the buffer."
   (declare (indent 1))
-  `(let ((file (make-temp-file "org-test"))
-	 (inside-text (if (stringp ,text) ,text (eval ,text)))
-	 buffer)
+  `(let ((file
+          ;; When I rescan ID locations, the symlink "/var" is resolved to
+          ;; "/private/var" on macOS. The simplest way to fix this is just to
+          ;; resolve the symlink manually at the start.
+          ;;
+          ;; Also need to run ‘abbreviate-file-name’ in case the temp file is
+          ;; created under HOME.
+          (abbreviate-file-name (file-truename (make-temp-file "org-test"))))
+         (inside-text (if (stringp ,text) ,text (eval ,text)))
+         buffer)
      (with-temp-file file (insert inside-text))
      (unwind-protect
 	 (progn
