@@ -1,6 +1,6 @@
 THIS_MAKEFILE_DIR = $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 EMACS ?= emacs
-SRC=org-gcal.el org-generic-id.el oauth2-auto.el
+SRC=org-gcal.el org-generic-id.el
 TEST=test/org-gcal-test.el test/org-generic-id-test.el
 BUILD_LOG = build.log
 CASK ?= cask
@@ -8,7 +8,7 @@ PKG_DIR := $(shell $(CASK) package-directory)
 ELCFILES = $(SRC:.el=.elc)
 .DEFAULT_GOAL := all
 
-.PHONY: all clean load-path compile test elpa install update-oauth2-auto
+.PHONY: all clean load-path compile test elpa install
 
 all: compile test
 
@@ -36,8 +36,3 @@ test: $(SRC) $(TEST) elpa compile
 	-L $(THIS_MAKEFILE_DIR) \
 	$(foreach test,$(TEST),$(addprefix -l $(THIS_MAKEFILE_DIR)/,$(test))) \
 	-f ert-run-tests-batch-and-exit
-
-# Vendor oauth2-auto from my fork until oauth2-auto is added to MELPA.
-update-oauth2-auto:
-	curl -o oauth2-auto.el \
-		https://raw.githubusercontent.com/telotortium/emacs-oauth2-auto/main/oauth2-auto.el

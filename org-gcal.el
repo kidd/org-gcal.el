@@ -35,7 +35,6 @@
 (require 'alert)
 (require 'json)
 (require 'aio)
-;; Not on MELPA yet. Must install from https://github.com/rhaps0dy/emacs-oauth2-auto.
 (require 'oauth2-auto)
 (require 'ol)
 (require 'org)
