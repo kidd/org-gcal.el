@@ -1,6 +1,11 @@
 name: Test
 
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
@@ -20,10 +25,10 @@ jobs:
 
     steps:
     - name: Checkout org-gcal repo
-      uses: actions/checkout@v4.2.2
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
     - name: Install Python
-      uses: actions/setup-python@v5.6.0
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
       with:
         python-version: '3.9'
         architecture: 'x64'
@@ -33,24 +38,56 @@ jobs:
       with:
         version: ${{matrix.emacs_version}}
 
-    - uses: actions/cache@v4.2.3
-      id: cache-cask-packages
-      with:
-        path: .cask
-        key: cache-cask-packages-000
+    - name: Discover Nix store path of Emacs
+      id: emacs_path
+      run: |
+        # which emacs gives you the wrapper; readlink -f will chase it to the store path
+        REAL_PATH=$(readlink -f "$(which emacs)")
+        IFS='/' read -ra parts <<< "$REAL_PATH"
+        # parts=( "" "nix" "store" $EMACS_STORE_PATH ... )
+        echo "EMACS_STORE_PATH=${parts[3]}" >> $GITHUB_ENV
+        echo "→ Emacs binary at $REAL_PATH"
 
-    - uses: actions/cache@v4.2.3
-      id: cache-cask-executable
+    - name: Cache Cask snapshot
+      id: cache-cask
+      uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684  # v4.2.3
       with:
-        path: ~/.cask
-        key: cache-cask-executable-000
+        path: |
+          ~/.cask
+          ~/.emacs.d/.cask
+        key: ${{ runner.os }}-${{ matrix.emacs_version }}-${{ matrix.cask_version }}-${{ env.EMACS_STORE_PATH }}
+        restore-keys: |
+          ${{ runner.os }}-${{ matrix.emacs_version }}-${{ matrix.cask_version }}-${{ env.EMACS_STORE_PATH }}
 
     - name: Install Cask
-      uses: cask/setup-cask@master
-      if: steps.cache-cask-executable.outputs.cache-hit != 'true'
+      uses: cask/setup-cask@4e417b59c4ebfb4d5730072f4f265b0ca02cfed4  # Current master as of 2025-06-24
+      if: steps.cache-cask.outputs.cache-hit != 'true'
       with:
-        version: snapshot
+        version: ${{matrix.cask_version}}
+
     - run: echo "$HOME/.cask/bin" >> $GITHUB_PATH
+
+    - name: Get Emacs version, package hash
+      id: emacs_version_package_hash
+      run: |
+        set -euo pipefail
+        # Use this to share packages between major.minor Emacs versions, as
+        # Cask divides up its package install directories accordingly.
+        EMACS_VERSION=$(emacs --version | head -n1 | awk '{print $3}' | cut -d. -f1-2)
+        echo "EMACS_VERSION=${EMACS_VERSION}" >> $GITHUB_ENV
+        # Hash files that change what packages are installed
+        PACKAGE_HASH=$(sha256sum Cask org-gcal-pkg.el | sha256sum | awk '{print $1}')
+        echo "PACKAGE_HASH=${PACKAGE_HASH}" >> $GITHUB_ENV
+
+    - name: Cache Elpa packages
+      id: cache-elpa
+      uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684  # v4.2.3
+      with:
+        path: |
+          .cask
+        key: ${{ runner.os }}-${{ env.EMACS_VERSION }}-${{ env.PACKAGE_HASH }}
+        restore-keys: |
+          ${{ runner.os }}-${{ env.EMACS_VERSION }}-${{ env.PACKAGE_HASH }}
 
     - name: Install dependencies
       run: make elpa
