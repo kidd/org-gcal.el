@@ -53,7 +53,6 @@ jobs:
       uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684  # v4.2.3
       with:
         path: |
-          .cask
           ~/.cask
           ~/.emacs.d/.cask
         key: ${{ runner.os }}-${{ matrix.emacs_version }}-${{ matrix.cask_version }}-${{ env.EMACS_STORE_PATH }}
@@ -65,7 +64,30 @@ jobs:
       if: steps.cache-cask.outputs.cache-hit != 'true'
       with:
         version: ${{matrix.cask_version}}
+
     - run: echo "$HOME/.cask/bin" >> $GITHUB_PATH
+
+    - name: Get Emacs version, package hash
+      id: emacs_version_package_hash
+      run: |
+        set -euo pipefail
+        # Use this to share packages between major.minor Emacs versions, as
+        # Cask divides up its package install directories accordingly.
+        EMACS_VERSION=$(emacs --version | head -n1 | awk '{print $3}' | cut -d. -f1-2)
+        echo "EMACS_VERSION=${EMACS_VERSION}" >> $GITHUB_ENV
+        # Hash files that change what packages are installed
+        PACKAGE_HASH=$(sha256sum Cask org-gcal-pkg.el | sha256sum | awk '{print $1}')
+        echo "PACKAGE_HASH=${PACKAGE_HASH}" >> $GITHUB_ENV
+
+    - name: Cache Elpa packages
+      id: cache-elpa
+      uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684  # v4.2.3
+      with:
+        path: |
+          .cask
+        key: ${{ runner.os }}-${{ env.EMACS_VERSION }}-${{ env.PACKAGE_HASH }}
+        restore-keys: |
+          ${{ runner.os }}-${{ env.EMACS_VERSION }}-${{ env.PACKAGE_HASH }}
 
     - name: Install dependencies
       run: make elpa
