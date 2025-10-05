@@ -4,6 +4,7 @@
 ;; URL: https://github.com/kidd/org-gcal.el
 ;; Version: 0.4.2
 ;; Maintainer: Raimon Grau <raimonster@gmail.com>
+;; Package-Requires: ((persist "0.8"))
 ;; Copyright (C) :2014 myuhe all rights reserved.
 ;; Keywords: convenience,
 
