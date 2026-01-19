@@ -197,6 +197,9 @@ Set `epg-pinentry-mode` to `'loopback` to avoid hanging errors during sync (#267
    3. Select "Settings"
    4. Scroll down to "Integrate calendar" to find the Calendar ID
 
+   Note: Multiple Google accounts (with separate OAuth credentials) are not
+   supported. All calendars must be accessible from your primary account.
+
 ** Different timezone
 
    If you local timezone is different from the Calendar. You can use
