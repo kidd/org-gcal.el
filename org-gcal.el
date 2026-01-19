@@ -93,6 +93,17 @@
   :group 'org-gcal
   :type 'string)
 
+(defcustom org-gcal-primary-account nil
+  "Primary Google account for OAuth authentication.
+When set, all calendars in `org-gcal-fetch-file-alist' will authenticate
+using this account instead of their individual calendar IDs.
+This is useful for fetching shared or subscribed calendars that are
+accessible from your primary account.
+Set this to your primary Google email address (e.g., \"user@gmail.com\")."
+  :group 'org-gcal
+  :type '(choice (const :tag "Use calendar ID for auth" nil)
+                 (string :tag "Primary account email")))
+
 (defvaralias 'org-gcal-file-alist 'org-gcal-fetch-file-alist)
 
 (defcustom org-gcal-fetch-file-alist nil
@@ -1373,19 +1384,23 @@ delete calendar info from events on calendars you no longer have access to."
         (deferred:succeed nil)))))
 
 (defun org-gcal--get-access-token (calendar-id)
-  "Return the access token for CALENDAR-ID."
-  (aio-wait-for
-   (oauth2-auto-access-token calendar-id 'org-gcal)))
+  "Return the access token for CALENDAR-ID.
+If `org-gcal-primary-account' is set, use that for authentication instead."
+  (let ((auth-account (or org-gcal-primary-account calendar-id)))
+    (aio-wait-for
+     (oauth2-auto-access-token auth-account 'org-gcal))))
 
 (defun org-gcal--refresh-token (calendar-id)
-  "Refresh OAuth access and return the new access token as a deferred object."
+  "Refresh OAuth access and return the new access token as a deferred object.
+If `org-gcal-primary-account' is set, use that for authentication instead."
   ;; FIXME: For now, we just synchronously wait for the refresh. Once the
   ;; project has been rewritten to use aio
   ;; (https://github.com/kidd/org-gcal.el/issues/191), we can wait for this
   ;; asynchronously as well.
-  (let ((token
-         (aio-wait-for
-          (oauth2-auto-access-token calendar-id 'org-gcal))))
+  (let* ((auth-account (or org-gcal-primary-account calendar-id))
+         (token
+          (aio-wait-for
+           (oauth2-auto-access-token auth-account 'org-gcal))))
     (deferred:succeed token)))
 
 ;;;###autoload
