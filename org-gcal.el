@@ -1484,6 +1484,23 @@ delete calendar info from events on calendars you no longer have access to."
         ""
       (substring string from to))))
 
+(defun org-gcal--strip-html (string)
+  "Strip HTML tags and decode entities in STRING.
+Google Calendar returns event descriptions as HTML.  Convert to
+plain text suitable for insertion into Org files."
+  (thread-last string
+    (replace-regexp-in-string "<br[^>]*>" "\n")
+    (replace-regexp-in-string "<li[^>]*>" "\n- ")
+    (replace-regexp-in-string "<[^>]+>" "")
+    (replace-regexp-in-string "&amp;" "&")
+    (replace-regexp-in-string "&lt;" "<")
+    (replace-regexp-in-string "&gt;" ">")
+    (replace-regexp-in-string "&nbsp;" " ")
+    (replace-regexp-in-string "&quot;" "\"")
+    (replace-regexp-in-string "&#39;" "'")
+    (replace-regexp-in-string "\n\\{3,\\}" "\n\n")
+    (string-trim)))
+
 (defun org-gcal--alldayp (s e)
   (let ((slst (org-gcal--parse-date s))
         (elst (org-gcal--parse-date e)))
@@ -1605,7 +1622,8 @@ heading."
   (unless (org-at-heading-p)
     (user-error "Must be on Org-mode heading."))
   (let* ((smry  (plist-get event :summary))
-         (desc  (plist-get event :description))
+         (desc  (when-let* ((d (plist-get event :description)))
+                  (org-gcal--strip-html d)))
          (loc   (plist-get event :location))
          (source (plist-get event :source))
          (transparency   (plist-get event :transparency))
