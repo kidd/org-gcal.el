@@ -1,7 +1,7 @@
 (source melpa)
 (source gnu)
 
-(package-descriptor "org-gcal-pkg.el")
+(package-file "org-gcal.el")
 
 (files :defaults)
 

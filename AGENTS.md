@@ -70,3 +70,5 @@ Notes:
   - `make test`
 - If behavior visible to users changes, update `README.org` accordingly.
 - Do not edit generated `.elc` files by hand.
+- If modifying `.github/workflows/main.yml` or other Github Action files, use
+  `actionlint` to check for errors, attempting to install it if not present.
