@@ -37,8 +37,8 @@
 (require 'json)
 (require 'aio)
 (require 'oauth2-auto)
-(require 'ol)
 (require 'org)
+(require 'ol nil t)
 (require 'org-archive)
 (require 'org-clock)
 (require 'org-element)
@@ -1555,6 +1555,18 @@ Return an Emacs time object from ‘encode-time'."
      ;;(if (and repeat (not (string= repeat ""))) (concat " " repeat) "")
      ">")))
 
+(defun org-gcal--make-link-string (url title)
+  "Return an Org link string for URL and TITLE across Org versions."
+  (cond
+   ((fboundp 'org-link-make-string)
+    (org-link-make-string url title))
+   ((fboundp 'org-make-link-string)
+    (org-make-link-string url title))
+   (title
+    (format "[[%s][%s]]" url title))
+   (t
+    (format "[[%s]]" url))))
+
 (defun org-gcal--format-org2iso (year mon day &optional hour min tz)
   (let ((seconds (time-to-seconds (encode-time 0
                                                (or min 0)
@@ -1661,7 +1673,7 @@ heading."
                          (plist-get source :url)))
          (t
           (org-entry-put (point) "link"
-                         (org-link-make-string
+                         (org-gcal--make-link-string
                           (plist-get source :url)
                           (plist-get source :title)))))))
     (when transparency (org-entry-put (point) "TRANSPARENCY" transparency))
