@@ -1645,7 +1645,9 @@ heading."
          (old-end (plist-get old-time-desc :start))
          (recurrence (plist-get event :recurrence))
          (elem))
-    (when loc (replace-regexp-in-string "\n" ", " loc))
+    (when loc
+      (setq loc
+            (replace-regexp-in-string "\n" ", " loc)))
     (org-edit-headline
      (cond
       ;; Don’t update headline if the new summary is the same as the CANCELLED
