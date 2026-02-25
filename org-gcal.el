@@ -54,7 +54,7 @@
 ;; Customization
 ;;; Code:
 
-(defgroup org-gcal nil "Org sync with Google Calendar"
+(defgroup org-gcal nil "Org sync with Google Calendar."
   :group 'org)
 
 (defcustom org-gcal-up-days 30
@@ -98,8 +98,8 @@
 
 (defcustom org-gcal-fetch-file-alist nil
   "\
-Association list '(calendar-id file). For each calendar-id,‘org-gcal-fetch’
-and ‘org-gcal-sync’ will retrieve new events on the calendar and insert
+Association list of (calendar-id file). For each calendar-id, `org-gcal-fetch'
+and `org-gcal-sync' will retrieve new events on the calendar and insert
 them into the file."
   :group 'org-gcal
   :type '(alist :key-type (string :tag "Calendar Id") :value-type (file :tag "Org file")))
@@ -122,8 +122,7 @@ Predicate functions take an event, and if they return nil the
   :type 'boolean)
 
 (defcustom org-gcal-update-cancelled-events-with-todo t
-  "If ‘t’, mark cancelled events with the TODO keyword in
-‘org-gcal-cancelled-todo-keyword’."
+  "If t, mark cancelled events with `org-gcal-cancelled-todo-keyword'."
   :group 'org-gcal
   :type 'boolean)
 
@@ -133,9 +132,9 @@ Predicate functions take an event, and if they return nil the
   :type 'string)
 
 (defcustom org-gcal-local-timezone nil
-  "Org-gcal local timezone. timezone value should use 'TZ
-database name', which can be found in
-'https://en.wikipedia.org/wiki/List_of_tz_database_time_zones'."
+  "Org-gcal local timezone.
+Timezone value should use \"TZ database name\", which can be found in
+`https://en.wikipedia.org/wiki/List_of_tz_database_time_zones'."
   :group 'org-gcal
   :type 'string)
 
@@ -155,9 +154,9 @@ The events will always be marked cancelled before they’re removed if
   "Whether to attempt to remove Org-mode headlines for cancelled events.
 Specifically effects events marked with ‘org-gcal-cancelled-todo-keyword’.
 
-By default, this is set to nil so that if you decline removing an event when
-‘org-gcal-remove-api-cancelled-events’ is set to ‘ask’, you won’t be prompted
-to remove the event again.  Set to t to override this.
+By default, this is set to nil so that if you decline removing an event
+when ‘org-gcal-remove-api-cancelled-events’ is set to ‘ask’, you won’t
+be prompted to remove the event again. Set to t to override this.
 
 Note that whether a headline is removed is still controlled by
 ‘org-gcal-remove-api-cancelled-events’."
@@ -227,9 +226,9 @@ Values: see ‘org-gcal-managed-newly-fetched-mode’."
 (defcustom org-gcal-recurring-events-mode 'top-level
   "How to treat instances of recurring events not already fetched.
 
-- ‘top-level’: insert all instances at the top level of the appropriate file for
-  the calendar ID in ‘org-gcal-fetch-file-alist’.
-- ‘nested’: insert instances of a recurring event under the Org-mode headline
+- `top-level': insert all instances at the top level of the appropriate file for
+  the calendar ID in `org-gcal-fetch-file-alist'.
+- `nested': insert instances of a recurring event under the Org-mode headline
   containing the parent event. If a headline for the parent event doesn’t exist,
   it will be created."
   :group 'org-gcal
@@ -275,7 +274,7 @@ Org-mode property on org-gcal entries that records the ETag."
   :type 'string)
 
 (defcustom org-gcal-managed-property "org-gcal-managed"
-  " Org-mode property on org-gcal entries that records how an event is managed.
+  "Org-mode property on org-gcal entries that records how an event is managed.
 
   For values the property can take, see ‘org-gcal-managed-newly-fetched-mode’."
   :group 'org-gcal
@@ -355,7 +354,8 @@ Export the ones to the calendar if unless
 SKIP-EXPORT.  Set SILENT to non-nil to inhibit notifications."
   (interactive)
   (when org-gcal--sync-lock
-    (user-error "org-gcal sync locked. If a previous sync has failed, call ‘org-gcal--sync-unlock’ to reset the lock and try again."))
+    (user-error "org-gcal sync locked. If a previous sync has failed,\
+ call `org-gcal--sync-unlock' to reset the lock and try again"))
   (org-gcal--sync-lock)
   (org-generic-id-update-id-locations org-gcal-entry-id-property)
   (when org-gcal-auto-archive
@@ -400,7 +400,7 @@ SKIP-EXPORT.  Set SILENT to non-nil to inhibit notifications."
 
 (defun org-gcal--sync-calendar (calendar-id-file skip-export silent
                                                  up-time down-time)
-  "Sync events for CALENDAR-ID-FILE
+  "Sync events for CALENDAR-ID-FILE.
 
 CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see."
   (let* (
@@ -429,7 +429,7 @@ CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see."
 (defun org-gcal--sync-calendar-events
     (calendar-id-file skip-export silent page-token up-time down-time
                       parent-events)
-  "Sync events for CALENDAR-ID-FILE
+  "Sync events for CALENDAR-ID-FILE.
 
 CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see."
   (let* ((calendar-id (car calendar-id-file))
@@ -504,7 +504,7 @@ CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see."
 
 (defun org-gcal--sync-event
     (calendar-id-file event-id skip-export)
-  "Sync a single event given by EVENT-ID
+  "Sync a single event given by EVENT-ID.
 
 CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see."
   (let* ((calendar-id (car calendar-id-file))
@@ -574,9 +574,9 @@ CALENDAR-ID-FILE is a cons in ‘org-gcal-fetch-file-alist’, for which see."
 
 (defun org-gcal--sync-handle-response
     (response calendar-id-file page-token-cons down-time retry-fn)
-  "Handle RESPONSE in ‘org-gcal--sync-calendar' for CALENDAR-ID-FILE.
+  "Handle RESPONSE in `org-gcal--sync-calendar' for CALENDAR-ID-FILE.
 
-Update PAGE-TOKEN from the response, and return a ‘deferred’ list of event
+Update PAGE-TOKEN from the response, and return a `deferred' list of event
 objects for further processing."
   (let
       ((data (request-response-data response))
@@ -796,7 +796,8 @@ Set FILTER-MAANGED to only update events with ‘org-gcal-managed-property’ se
 to “org”."
   (interactive)
   (when org-gcal--sync-lock
-    (user-error "org-gcal sync locked. If a previous sync has failed, call ‘org-gcal--sync-unlock’ to reset the lock and try again."))
+    (user-error "org-gcal sync locked. If a previous sync has failed,\
+ call `org-gcal--sync-unlock' to reset the lock and try again"))
   (org-gcal--sync-lock)
   (let*
       ((name (or (buffer-file-name) (buffer-name))))
@@ -939,7 +940,7 @@ Based on ‘org-with-point-at’ but doesn’t widen the buffer."
 
 ;;;###autoload
 (defun org-gcal-fetch-buffer (&optional silent filter-date)
-  "Fetch changes to events in the currently-visible portion of the buffer
+  "Fetch changes to events in the currently-visible portion of the buffer.
 
 Unlike ‘org-gcal-sync-buffer’, this will not push any changes to Google
 Calendar. For SILENT and FILTER-DATE see ‘org-gcal-sync-buffer’."
@@ -1283,7 +1284,7 @@ For valid values of EXISTING-MODE see
              (setq skip-export t)))
           ('always-push nil)
           (val
-           (user-error "Bad value %S of EXISTING-MODE passed to ‘org-gcal-post-at-point’. For valid values see ‘org-gcal-managed-post-at-point-update-existing’."
+           (user-error "Bad value %S of EXISTING-MODE passed to ‘org-gcal-post-at-point’. For valid values see ‘org-gcal-managed-post-at-point-update-existing’"
                        val))))
       ;; Read currently-present start and end times and description. Fill in a
       ;; reasonable start and end time if either is missing.
@@ -1474,8 +1475,8 @@ delete calendar info from events on calendars you no longer have access to."
 
 (defun org-gcal--safe-substring (string from &optional to)
   "Call the `substring' function safely.
-  No errors will be returned for out of range values of FROM and
-  TO.  Instead an empty string is returned."
+No errors will be returned for out of range values of FROM and
+TO.  Instead an empty string is returned."
   (let* ((len (length string))
          (to (or to len)))
     (when (< from 0)
@@ -1619,7 +1620,7 @@ If UPDATE-MODE is passed, then the functions in
 arguments as passed to this function and the point moved to the beginning of the
 heading."
   (unless (org-at-heading-p)
-    (user-error "Must be on Org-mode heading."))
+    (user-error "Must be on Org-mode heading"))
   (let* ((smry  (plist-get event :summary))
          (desc  (plist-get event :description))
          (loc   (plist-get event :location))
@@ -1778,7 +1779,7 @@ heading."
       (org-gcal--maybe-remove-entry))))
 
 (defun org-gcal--maybe-remove-entry ()
-  "Maybe remove the entry at the current heading
+  "Maybe remove the entry at the current heading.
 
 Depends on the value of ‘org-gcal-remove-api-cancelled-events’."
   (when-let (((and org-gcal-remove-api-cancelled-events))
