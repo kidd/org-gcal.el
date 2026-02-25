@@ -1024,6 +1024,64 @@ CLOCK: [2019-06-06 Thu 17:00]--[2019-06-06 Thu 18:00] => 1:00
                                   * * *))
       (org-gcal-post-at-point)))))
 
+(ert-deftest org-gcal-test--post-at-point-default-duration ()
+  "Verify that missing end time uses ‘org-gcal-event-default-duration’."
+  (org-gcal-test--with-temp-buffer
+   "\
+* My event summary
+"
+   (with-mock
+    (stub completing-read => "foo@foobar.com")
+    (stub org-read-date => (encode-time 0 0 17 6 10 2019 nil nil t))
+    (stub org-gcal--time-zone => '(0 "UTC"))
+    (stub org-generic-id-add-location => nil)
+    (stub org-gcal--get-access-token => "my_access_token")
+    (stub org-gcal--refresh-token => (deferred:succeed "test_access_token"))
+    (let ((org-gcal-event-default-duration 30))
+      (cl-letf (((symbol-function #'read-from-minibuffer)
+                 (lambda (_prompt initial-contents)
+                   (should (equal initial-contents "0:30"))
+                   initial-contents)))
+        (mock (org-gcal--post-event "2019-10-06T17:00:00+0000" "2019-10-06T17:30:00+0000"
+                                    "My event summary" nil
+                                    nil nil
+                                    "foo@foobar.com"
+                                    * "opaque" nil nil
+                                    * * *))
+        (org-gcal-post-at-point))))))
+
+(ert-deftest org-gcal-test--post-at-point-default-duration-minimum ()
+  "Verify ‘org-gcal-event-default-duration’ is a minimum duration."
+  (org-gcal-test--with-temp-buffer
+   "\
+* My event summary
+:PROPERTIES:
+:Effort: 2:00
+:END:
+:LOGBOOK:
+CLOCK: [2019-06-06 Thu 17:00]--[2019-06-06 Thu 18:00] => 1:00
+:END:
+"
+   (with-mock
+    (stub completing-read => "foo@foobar.com")
+    (stub org-read-date => (encode-time 0 0 17 6 10 2019 nil nil t))
+    (stub org-gcal--time-zone => '(0 "UTC"))
+    (stub org-generic-id-add-location => nil)
+    (stub org-gcal--get-access-token => "my_access_token")
+    (stub org-gcal--refresh-token => (deferred:succeed "test_access_token"))
+    (let ((org-gcal-event-default-duration 90))
+      (cl-letf (((symbol-function #'read-from-minibuffer)
+                 (lambda (_prompt initial-contents)
+                   (should (equal initial-contents "1:30"))
+                   initial-contents)))
+        (mock (org-gcal--post-event "2019-10-06T17:00:00+0000" "2019-10-06T18:30:00+0000"
+                                    "My event summary" nil
+                                    nil nil
+                                    "foo@foobar.com"
+                                    * "opaque" nil nil
+                                    * * *))
+        (org-gcal-post-at-point))))))
+
 (ert-deftest org-gcal-test--post-at-point-etag-no-id ()
   "Verify that ‘org-gcal-post-to-point’ fails if an ETag is present but
 an event ID is not."
