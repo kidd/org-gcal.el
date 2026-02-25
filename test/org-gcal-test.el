@@ -1372,8 +1372,8 @@ Second paragraph
              (contents (buffer-substring-no-properties
                         (org-element-property :contents-begin elem)
                         (org-element-property :contents-end elem))))
-        ;; Should not contain HTML tags
-        (should-not (string-match-p "<[^>]+>" contents))
+        ;; Should not contain HTML tags (use regex that won't match Org timestamps)
+        (should-not (string-match-p "</?[a-zA-Z][^>]*>" contents))
         ;; Should contain converted text
         (should (string-match-p "Click the link:" contents))
         (should (string-match-p "https://meet.jit.si/Weekly" contents))
@@ -1417,7 +1417,7 @@ Second paragraph
              (contents (buffer-substring-no-properties
                         (org-element-property :contents-begin elem)
                         (org-element-property :contents-end elem))))
-        (should-not (string-match-p "<[^>]+>" contents))
+        (should-not (string-match-p "</?[a-zA-Z][^>]*>" contents))
         (should (string-match-p "& more info" contents))))))
 
 ;;; TODO: Figure out mocking for POST/PATCH followed by GET
