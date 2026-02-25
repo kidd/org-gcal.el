@@ -81,6 +81,12 @@
 }
 ")
 
+(defconst org-gcal-test-html-event-json
+  (replace-regexp-in-string
+   "My event description\\\\n\\\\nSecond paragraph"
+   "<html-blob>Click the link:<br><a href=\\\\\"https://meet.jit.si/Weekly\\\\\">https://meet.jit.si/Weekly</a><br><br>Items:<br><ul><li>First</li><li>Second</li></ul>&amp; more info</html-blob>"
+   org-gcal-test-event-json))
+
 (defconst org-gcal-test-cancelled-event-json
   (replace-regexp-in-string "confirmed" "cancelled"
                             org-gcal-test-event-json))
@@ -123,6 +129,9 @@ always located at the beginning of the buffer."
 
 (defconst org-gcal-test-event
   (org-gcal-test--json-read-string org-gcal-test-event-json))
+
+(defconst org-gcal-test-html-event
+  (org-gcal-test--json-read-string org-gcal-test-html-event-json))
 
 (defconst org-gcal-test-cancelled-event
   (org-gcal-test--json-read-string org-gcal-test-cancelled-event-json))
@@ -1306,6 +1315,110 @@ Second paragraph
 ;;           (let ((bufstr
 ;;                  (buffer-substring-no-properties (point-min) (point-max))))
 ;;             (should (string-equal bufstr target-buf))))))))
+
+(ert-deftest org-gcal-test--strip-html ()
+  "Verify that `org-gcal--strip-html' converts HTML to plain text."
+  (should (equal (org-gcal--strip-html
+                  "<html-blob>Click the link:<br><a href=\"https://meet.jit.si/Weekly\">https://meet.jit.si/Weekly</a><br></html-blob>")
+                 "Click the link:\nhttps://meet.jit.si/Weekly"))
+  ;; List items
+  (should (equal (org-gcal--strip-html "<ul><li>First</li><li>Second</li></ul>")
+                 "- First\n- Second"))
+  ;; HTML entities
+  (should (equal (org-gcal--strip-html "foo &amp; bar &lt;baz&gt; &quot;quux&quot; &#39;x&#39; &nbsp;")
+                 "foo & bar <baz> \"quux\" 'x'"))
+  ;; Consecutive blank lines collapsed
+  (should (equal (org-gcal--strip-html "a<br><br><br><br>b")
+                 "a\n\nb"))
+  ;; Plain text passes through
+  (should (equal (org-gcal--strip-html "No HTML here")
+                 "No HTML here")))
+
+(ert-deftest org-gcal-test--strip-html-p ()
+  "Verify that `org-gcal--strip-html-p' respects global default and overrides."
+  ;; Global default nil
+  (let ((org-gcal-strip-html-descriptions nil)
+        (org-gcal-strip-html-descriptions-overrides nil))
+    (should-not (org-gcal--strip-html-p "cal@example.com")))
+  ;; Global default t
+  (let ((org-gcal-strip-html-descriptions t)
+        (org-gcal-strip-html-descriptions-overrides nil))
+    (should (org-gcal--strip-html-p "cal@example.com")))
+  ;; Per-calendar override enables stripping despite global nil
+  (let ((org-gcal-strip-html-descriptions nil)
+        (org-gcal-strip-html-descriptions-overrides
+         '(("cal@example.com" . t))))
+    (should (org-gcal--strip-html-p "cal@example.com"))
+    (should-not (org-gcal--strip-html-p "other@example.com")))
+  ;; Per-calendar override disables stripping despite global t
+  (let ((org-gcal-strip-html-descriptions t)
+        (org-gcal-strip-html-descriptions-overrides
+         '(("shared@group.calendar.google.com" . nil))))
+    (should-not (org-gcal--strip-html-p "shared@group.calendar.google.com"))
+    (should (org-gcal--strip-html-p "personal@gmail.com"))))
+
+(ert-deftest org-gcal-test--update-entry-strip-html ()
+  "Verify that `org-gcal--update-entry' strips HTML when enabled."
+  ;; With stripping enabled, HTML is converted to plain text.
+  (let ((org-gcal-strip-html-descriptions t)
+        (org-gcal-strip-html-descriptions-overrides nil))
+    (org-gcal-test--with-temp-buffer
+        "* "
+      (org-gcal--update-entry org-gcal-test-calendar-id
+                              org-gcal-test-html-event)
+      (org-back-to-heading)
+      (re-search-forward ":org-gcal:")
+      (let* ((elem (org-element-at-point))
+             (contents (buffer-substring-no-properties
+                        (org-element-property :contents-begin elem)
+                        (org-element-property :contents-end elem))))
+        ;; Should not contain HTML tags
+        (should-not (string-match-p "<[^>]+>" contents))
+        ;; Should contain converted text
+        (should (string-match-p "Click the link:" contents))
+        (should (string-match-p "https://meet.jit.si/Weekly" contents))
+        ;; Entity decoded
+        (should (string-match-p "& more info" contents))))))
+
+(ert-deftest org-gcal-test--update-entry-preserve-html ()
+  "Verify that `org-gcal--update-entry' preserves HTML when stripping disabled."
+  ;; With stripping disabled (default), HTML is preserved.
+  (let ((org-gcal-strip-html-descriptions nil)
+        (org-gcal-strip-html-descriptions-overrides nil))
+    (org-gcal-test--with-temp-buffer
+        "* "
+      (org-gcal--update-entry org-gcal-test-calendar-id
+                              org-gcal-test-html-event)
+      (org-back-to-heading)
+      (re-search-forward ":org-gcal:")
+      (let* ((elem (org-element-at-point))
+             (contents (buffer-substring-no-properties
+                        (org-element-property :contents-begin elem)
+                        (org-element-property :contents-end elem))))
+        ;; Should still contain HTML tags
+        (should (string-match-p "<html-blob>" contents))
+        (should (string-match-p "</a>" contents))
+        ;; Entity NOT decoded
+        (should (string-match-p "&amp;" contents))))))
+
+(ert-deftest org-gcal-test--update-entry-strip-html-per-calendar ()
+  "Verify per-calendar override for HTML stripping in `org-gcal--update-entry'."
+  ;; Global default is nil, but this specific calendar has stripping enabled.
+  (let ((org-gcal-strip-html-descriptions nil)
+        (org-gcal-strip-html-descriptions-overrides
+         `((,org-gcal-test-calendar-id . t))))
+    (org-gcal-test--with-temp-buffer
+        "* "
+      (org-gcal--update-entry org-gcal-test-calendar-id
+                              org-gcal-test-html-event)
+      (org-back-to-heading)
+      (re-search-forward ":org-gcal:")
+      (let* ((elem (org-element-at-point))
+             (contents (buffer-substring-no-properties
+                        (org-element-property :contents-begin elem)
+                        (org-element-property :contents-end elem))))
+        (should-not (string-match-p "<[^>]+>" contents))
+        (should (string-match-p "& more info" contents))))))
 
 ;;; TODO: Figure out mocking for POST/PATCH followed by GET
 ;;; - ‘mock‘ might work for this - the argument list must be specified up
