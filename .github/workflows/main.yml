@@ -90,7 +90,27 @@ jobs:
           ${{ runner.os }}-${{ env.EMACS_VERSION }}-${{ env.PACKAGE_HASH }}
 
     - name: Install dependencies
-      run: make elpa
+      run: |
+        set -euo pipefail
+        restore_cask() {
+          if [[ -f Cask.bak ]]; then
+            mv Cask.bak Cask
+          fi
+        }
+        trap restore_cask EXIT
+
+        # GNU ELPA currently resolves Org to a release requiring Emacs 28.2+.
+        # For Emacs 26/27 jobs, pin Org 9.3 explicitly.
+        if [[ "${{ matrix.emacs_version }}" == 26.* || "${{ matrix.emacs_version }}" == 27.* ]]; then
+          cp Cask Cask.bak
+          cat >> Cask <<'EOF'
+(depends-on "org"
+            :git "https://git.savannah.gnu.org/git/emacs/org-mode.git"
+            :ref "release_9.3.8")
+EOF
+        fi
+
+        make elpa
 
     - name: Compile
       run: make compile
