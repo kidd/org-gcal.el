@@ -45,7 +45,7 @@ jobs:
         REAL_PATH=$(readlink -f "$(which emacs)")
         IFS='/' read -ra parts <<< "$REAL_PATH"
         # parts=( "" "nix" "store" $EMACS_STORE_PATH ... )
-        echo "EMACS_STORE_PATH=${parts[3]}" >> $GITHUB_ENV
+        echo "EMACS_STORE_PATH=${parts[3]}" >> "$GITHUB_ENV"
         echo "→ Emacs binary at $REAL_PATH"
 
     - name: Cache Cask snapshot
@@ -65,7 +65,17 @@ jobs:
       with:
         version: ${{matrix.cask_version}}
 
-    - run: echo "$HOME/.cask/bin" >> $GITHUB_PATH
+    - run: echo "$HOME/.cask/bin" >> "$GITHUB_PATH"
+
+    - name: Pin Org for Emacs 26/27
+      if: startsWith(matrix.emacs_version, '26.') || startsWith(matrix.emacs_version, '27.')
+      run: |
+        # GNU ELPA currently resolves Org to a release requiring Emacs 28.2+.
+        # For Emacs 26/27 jobs, pin Org 9.3 explicitly in Cask before cache keying.
+        printf '\n(depends-on "org"\n            :git "https://git.savannah.gnu.org/git/emacs/org-mode.git"\n            :ref "release_9.3.8")\n' >> Cask
+        # Also remove the Org ELPA dependency from Package-Requires for these jobs,
+        # so Cask doesn't try to resolve GNU ELPA's newer org package.
+        perl -i -pe 'if (/^;; Package-Requires:/) { s/\s*\(org "9\.3"\)//g; }' org-gcal.el
 
     - name: Get Emacs version, package hash
       id: emacs_version_package_hash
@@ -74,10 +84,10 @@ jobs:
         # Use this to share packages between major.minor Emacs versions, as
         # Cask divides up its package install directories accordingly.
         EMACS_VERSION=$(emacs --version | head -n1 | awk '{print $3}' | cut -d. -f1-2)
-        echo "EMACS_VERSION=${EMACS_VERSION}" >> $GITHUB_ENV
+        echo "EMACS_VERSION=${EMACS_VERSION}" >> "$GITHUB_ENV"
         # Hash files that change what packages are installed
         PACKAGE_HASH=$(sha256sum Cask <(grep '^[^a-zA-Z]*Package-Requires:' org-gcal.el) | sha256sum | awk '{print $1}')
-        echo "PACKAGE_HASH=${PACKAGE_HASH}" >> $GITHUB_ENV
+        echo "PACKAGE_HASH=${PACKAGE_HASH}" >> "$GITHUB_ENV"
 
     - name: Cache Elpa packages
       id: cache-elpa
@@ -90,27 +100,7 @@ jobs:
           ${{ runner.os }}-${{ env.EMACS_VERSION }}-${{ env.PACKAGE_HASH }}
 
     - name: Install dependencies
-      run: |
-        set -euo pipefail
-        restore_cask() {
-          if [[ -f Cask.bak ]]; then
-            mv Cask.bak Cask
-          fi
-        }
-        trap restore_cask EXIT
-
-        # GNU ELPA currently resolves Org to a release requiring Emacs 28.2+.
-        # For Emacs 26/27 jobs, pin Org 9.3 explicitly.
-        if [[ "${{ matrix.emacs_version }}" == 26.* || "${{ matrix.emacs_version }}" == 27.* ]]; then
-          cp Cask Cask.bak
-          cat >> Cask <<'EOF'
-(depends-on "org"
-            :git "https://git.savannah.gnu.org/git/emacs/org-mode.git"
-            :ref "release_9.3.8")
-EOF
-        fi
-
-        make elpa
+      run: make elpa
 
     - name: Compile
       run: make compile
