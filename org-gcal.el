@@ -114,7 +114,7 @@ them into the file."
 Predicate functions take an event, and if they return nil the
    event will not be fetched."
   :group 'org-gcal
-  :type 'list)
+  :type '(repeat function))
 
 (defcustom org-gcal-notify-p t
   "If nil no more alert messages are shown for status updates."
@@ -147,7 +147,7 @@ The events will always be marked cancelled before they’re removed if
   :group 'org-gcal
   :type '(choice
           (const :tag "Never remove" nil)
-          (const :tag "Prompt whether to remove" 'ask)
+          (const :tag "Prompt whether to remove" ask)
           (const :tag "Always remove without prompting" t)))
 
 (defcustom org-gcal-remove-events-with-cancelled-todo nil
@@ -218,10 +218,10 @@ Values: see ‘org-gcal-managed-newly-fetched-mode’."
 
   :group 'org-gcal
   :type '(choice
-          (const :tag "Never push to Google Calendar" 'never-push)
-          (const :tag "Prompt whether to push to Google Calendar if run manually, never push during syncs" 'prompt)
-          (const :tag "Prompt whether to push to Google Calendar, even during syncs" 'prompt-sync)
-          (const :tag "Always push to Google Calendar" 'always-push)))
+          (const :tag "Never push to Google Calendar" never-push)
+          (const :tag "Prompt whether to push to Google Calendar if run manually, never push during syncs" prompt)
+          (const :tag "Prompt whether to push to Google Calendar, even during syncs" prompt-sync)
+          (const :tag "Always push to Google Calendar" always-push)))
 
 (defcustom org-gcal-recurring-events-mode 'top-level
   "How to treat instances of recurring events not already fetched.
@@ -233,8 +233,8 @@ Values: see ‘org-gcal-managed-newly-fetched-mode’."
   it will be created."
   :group 'org-gcal
   :type '(choice
-          (const :tag "Insert at top level" 'top-level)
-          (const :tag "Insert under headline for parent event" 'nested)))
+          (const :tag "Insert at top level" top-level)
+          (const :tag "Insert under headline for parent event" nested)))
 
 (defcustom org-gcal-after-update-entry-functions nil
   "List of functions to run just before ‘org-gcal--update-entry’ returns.
@@ -253,7 +253,7 @@ function in the list is called with the following arguments:
   - CREATE-FROM-ENTRY: a headline without existing calendar and event IDs is
     being updated (see ‘org-gcal-managed-create-from-entry-mode’)."
   :group 'org-gcal
-  :type 'list)
+  :type '(repeat function))
 
 (defcustom org-gcal-entry-id-property "entry-id"
   "\
