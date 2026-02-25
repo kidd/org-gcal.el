@@ -76,7 +76,7 @@ jobs:
         EMACS_VERSION=$(emacs --version | head -n1 | awk '{print $3}' | cut -d. -f1-2)
         echo "EMACS_VERSION=${EMACS_VERSION}" >> $GITHUB_ENV
         # Hash files that change what packages are installed
-        PACKAGE_HASH=$(sha256sum Cask org-gcal-pkg.el | sha256sum | awk '{print $1}')
+        PACKAGE_HASH=$(sha256sum Cask <(grep '^[^a-zA-Z]*Package-Requires:' org-gcal.el) | sha256sum | awk '{print $1}')
         echo "PACKAGE_HASH=${PACKAGE_HASH}" >> $GITHUB_ENV
 
     - name: Cache Elpa packages
