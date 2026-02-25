@@ -48,60 +48,55 @@ screen that says "This app isn't verified". You will need to click on the
 :CUSTOM_ID:  Installation
 :END:
 
-The method below will allow you to use oauth2-auto to perform authentication
-of the Google Calendar API. This new method is required due to a February 2022
-change on Google's end that removed Out-of-Band redirect urls.
-
-Please note that users still the old OOB method of authentication will be required to
-use the below method before Feburary 2023, [[https://developers.google.com/identity/protocols/oauth2/resources/oob-migration][as Google will be blocking all existing
-OOB clients on January 31, 2023.]]
+The method below will allow you to use oauth2-auto to perform
+authentication of the Google Calendar API.
 
 1. Go to [[https://console.developers.google.com/project][Google Developers Console]]
 
-2. Create a project (with any name)
+2. Click on ‘Create project’. Give it any name you like.
 
-3. Click on the project
+3. Select the project.
 
-4. Click on the hamburger menu at the upper-left, then *APIs & Services*, then
-   *Credentials*.
+4. Click on the hamburger menu at the upper-left if it isn’t already
+   shown, then *APIs & Services*, then *Credentials*.
    
-5. Set up a consent screen. Give the application a name and set it up as type
-   "external application", and accept the defaults for everything else. You
-   should not need to verify the application, because only your user will be
-   using it.
+5. Click on ‘Configure consent screen’, then ‘Get started’. Give the
+   application any name you like, select an email, and click ‘next’.
+   As ‘Audience’, select ‘External’. In ‘Contact information’, enter
+   an email address. In ‘Finish’, tick the agreement box and click
+   ‘Continue’. Then click ‘Create’.
 
-6. Once you've set up a consent screen (this is required), click on *Create
-   Credentials* and *Oauth client ID* with Application type /Desktop/ (or /Other/, if /Desktop/ is not present).
+6. Now that you've set up a consent screen, click on ‘Create OAuth
+   client’. As ‘Application type’, select /Desktop app/ (or /Other/, if
+   /Desktop app/ is not present). Give it any name you like.
 
-7. Click on *Create Client ID*
+7. Click on *Create*
 
 8. Record the Client ID and Client secret for setup.
 
-9. Under the same *APIs & Services* menu section, select *Library*
+9. Go back to the hamburger menu and, under the same *APIs & Services*
+   menu section, select *Library*
 
-10. Scroll down to *Calendar API*. Click the *Enable* button to enable calendar
-    API access to the app you created in steps 5 & 6.
+10. Scroll down to *Calendar API*. Click the *Enable* button to enable
+    calendar API access to the app you created in steps 5 & 6.
 
-    Go to [[https://www.google.com/calendar/render][Google setting page]] to
-    check the calendar ID.
+11. Go to [[https://www.google.com/calendar/render][Google setting page]] and click the gear-shaped settings icon
+    in the upper right, then select "Settings" from the drop down
+    list.
 
-11. Go to [[https://www.google.com/calendar/render][Google setting page]] and
-    click the gear-shaped settings icon in the upper right, then select
-    "Settings" from the drop down list.
-
-12. Select the "Setting for my Calendars" tab on the left, which will
+12. Scroll down to the "Setting for my Calendars" tab, which will
     display a list of your calendars.
 
 13. Select the calendar you would like to synchronize with. This will
     take you to the "Calendar Settings" page for that calendar. Near
-    the end is a section titled "Integrate Calendar". Following the XML,
-    ICAL, and HTML tags, you will see your Calendar ID.
+    the end is a section titled "Integrate Calendar". Click on it. At
+    the beginning of that section, you will see your calendar ID.
 
 14. Copy the Calendar ID for use in the settings below, where you will
     use it as the first element in the org-gcal-fetch-file-alist for
     associating calendars with specific org files. You can associate
-    different calendars with different org files, so repeat this for
-    each calendar you want to use.
+    different calendars with different org files, so repeat steps
+    11–13 for each calendar you want to use.
 
 ** Setting example
 
