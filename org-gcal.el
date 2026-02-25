@@ -116,6 +116,31 @@ Predicate functions take an event, and if they return nil the
   :group 'org-gcal
   :type 'list)
 
+(defcustom org-gcal-strip-html-descriptions nil
+  "Whether to strip HTML tags and entities from event descriptions.
+When non-nil, HTML in event descriptions fetched from Google Calendar
+is converted to plain text before insertion into Org files.
+
+This is the global default.  Use `org-gcal-strip-html-descriptions-overrides'
+to override this setting for specific calendars."
+  :group 'org-gcal
+  :type 'boolean)
+
+(defcustom org-gcal-strip-html-descriptions-overrides nil
+  "Per-calendar overrides for `org-gcal-strip-html-descriptions'.
+An alist mapping calendar IDs to booleans.  Calendars listed here
+use the specified value instead of the global default.
+
+For example, to strip HTML globally but preserve it for a shared
+calendar:
+
+  (setq org-gcal-strip-html-descriptions t)
+  (setq org-gcal-strip-html-descriptions-overrides
+        \\='((\"shared-calendar@group.calendar.google.com\" . nil)))"
+  :group 'org-gcal
+  :type '(alist :key-type (string :tag "Calendar ID")
+                :value-type (boolean :tag "Strip HTML")))
+
 (defcustom org-gcal-notify-p t
   "If nil no more alert messages are shown for status updates."
   :group 'org-gcal
@@ -1488,6 +1513,33 @@ delete calendar info from events on calendars you no longer have access to."
         ""
       (substring string from to))))
 
+(defun org-gcal--strip-html-p (calendar-id)
+  "Return non-nil if HTML should be stripped for CALENDAR-ID.
+Consult `org-gcal-strip-html-descriptions-overrides' first, falling
+back to `org-gcal-strip-html-descriptions'."
+  (if-let* ((override (assoc calendar-id
+                              org-gcal-strip-html-descriptions-overrides
+                              #'string=)))
+      (cdr override)
+    org-gcal-strip-html-descriptions))
+
+(defun org-gcal--strip-html (string)
+  "Strip HTML tags and decode entities in STRING.
+Google Calendar returns event descriptions as HTML.  Convert to
+plain text suitable for insertion into Org files."
+  (thread-last string
+    (replace-regexp-in-string "<br[^>]*>" "\n")
+    (replace-regexp-in-string "<li[^>]*>" "\n- ")
+    (replace-regexp-in-string "<[^>]+>" "")
+    (replace-regexp-in-string "&amp;" "&")
+    (replace-regexp-in-string "&lt;" "<")
+    (replace-regexp-in-string "&gt;" ">")
+    (replace-regexp-in-string "&nbsp;" " ")
+    (replace-regexp-in-string "&quot;" "\"")
+    (replace-regexp-in-string "&#39;" "'")
+    (replace-regexp-in-string "\n\\{3,\\}" "\n\n")
+    (string-trim)))
+
 (defun org-gcal--alldayp (s e)
   (let ((slst (org-gcal--parse-date s))
         (elst (org-gcal--parse-date e)))
@@ -1621,7 +1673,10 @@ heading."
   (unless (org-at-heading-p)
     (user-error "Must be on Org-mode heading."))
   (let* ((smry  (plist-get event :summary))
-         (desc  (plist-get event :description))
+         (desc  (when-let* ((d (plist-get event :description)))
+                  (if (org-gcal--strip-html-p calendar-id)
+                      (org-gcal--strip-html d)
+                    d)))
          (loc   (plist-get event :location))
          (source (plist-get event :source))
          (transparency   (plist-get event :transparency))
