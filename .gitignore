@@ -4,3 +4,4 @@
 build.log
 
 flycheck_*.el
+*~
