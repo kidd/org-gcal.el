@@ -164,6 +164,12 @@ To do this, follow these steps:
    [these
    instructions](https://gist.github.com/koshatul/2427643668d4e89c0086f297f9ed2130).
 
+Set `epg-pinentry-mode` to `'loopback` to avoid hanging errors during sync (#267).
+
+#+begin_src elisp
+(setq epg-pinentry-mode 'loopback)
+#+end_src
+
 ** Multiple accounts
 
    There's no support for multiple accounts.  If you want to use

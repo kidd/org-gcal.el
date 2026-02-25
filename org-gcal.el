@@ -2,8 +2,9 @@
 
 ;; Author: myuhe <yuhei.maeda_at_gmail.com>
 ;; URL: https://github.com/kidd/org-gcal.el
-;; Version: 0.4.2
+;; Version: 0.4.3
 ;; Maintainer: Raimon Grau <raimonster@gmail.com>
+;; Package-Requires: ((aio "1.0") (alert "1.2") (emacs "26.1") (oauth2-auto "20240326.2225") (org "9.3") (persist "0.8") (request "20190901") (request-deferred "20181129"))
 ;; Copyright (C) :2014 myuhe all rights reserved.
 ;; Keywords: convenience,
 
@@ -35,10 +36,9 @@
 (require 'alert)
 (require 'json)
 (require 'aio)
-;; Not on MELPA yet. Must install from https://github.com/rhaps0dy/emacs-oauth2-auto.
 (require 'oauth2-auto)
-(require 'ol)
 (require 'org)
+(require 'ol nil t)
 (require 'org-archive)
 (require 'org-clock)
 (require 'org-element)
@@ -1187,11 +1187,11 @@ or nil if no valid link is found."
       (insert link)
       (org-mode)
       (goto-char (point-min))
-      (when-let ((link-element (car-safe (cdr-safe (org-element-link-parser)))))
-        (let ((link-title-begin (plist-get link-element :contents-begin))
-              (link-title-end (plist-get link-element :contents-end)))
+      (when-let ((link-element (org-element-link-parser)))
+        (let ((link-title-begin (org-element-property :contents-begin link-element))
+              (link-title-end (org-element-property :contents-end link-element)))
           (append
-           `((url . ,(plist-get link-element :raw-link)))
+           `((url . ,(org-element-property :raw-link link-element)))
            (when (and link-title-begin link-title-end)
              `((title
                 . ,(buffer-substring-no-properties
@@ -1572,6 +1572,18 @@ Return an Emacs time object from ‘encode-time'."
      ;;(if (and repeat (not (string= repeat ""))) (concat " " repeat) "")
      ">")))
 
+(defun org-gcal--make-link-string (url title)
+  "Return an Org link string for URL and TITLE across Org versions."
+  (cond
+   ((fboundp 'org-link-make-string)
+    (org-link-make-string url title))
+   ((fboundp 'org-make-link-string)
+    (org-make-link-string url title))
+   (title
+    (format "[[%s][%s]]" url title))
+   (t
+    (format "[[%s]]" url))))
+
 (defun org-gcal--format-org2iso (year mon day &optional hour min tz)
   (let ((seconds (time-to-seconds (encode-time 0
                                                (or min 0)
@@ -1679,7 +1691,7 @@ heading."
                          (plist-get source :url)))
          (t
           (org-entry-put (point) "link"
-                         (org-link-make-string
+                         (org-gcal--make-link-string
                           (plist-get source :url)
                           (plist-get source :title)))))))
     (when transparency (org-entry-put (point) "TRANSPARENCY" transparency))
