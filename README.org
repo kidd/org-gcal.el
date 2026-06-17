@@ -170,14 +170,35 @@ Set `epg-pinentry-mode` to `'loopback` to avoid hanging errors during sync (#267
 (setq epg-pinentry-mode 'loopback)
 #+end_src
 
-** Multiple accounts
+** Multiple calendars from one account
 
-   There's no support for multiple accounts.  If you want to use
-   org-gcal with calendars from different accounts, you can give
-   permissions to the account you configured via the calendar's
-   settings interface.
+   You can sync multiple calendars (including shared and subscribed calendars)
+   using a single Google account for authentication. This is useful when you
+   have calendars shared with you or subscribed calendars that are accessible
+   from your primary Google account.
 
-   To get more detailed information you can [[https://digibites.zendesk.com/hc/en-us/articles/200299863-How-do-I-share-my-calendar-with-someone-else-Google-Calendar-or-Outlook-com-][check this link]].
+   Set =org-gcal-primary-account= to your primary Google email address:
+
+   #+begin_src elisp
+   (setq org-gcal-primary-account "your-email@gmail.com"
+         org-gcal-client-id "your-id-foo.apps.googleusercontent.com"
+         org-gcal-client-secret "your-secret"
+         org-gcal-fetch-file-alist '(("your-email@gmail.com" . "~/calendar.org")
+                                     ("shared-calendar-id@group.calendar.google.com" . "~/calendar.org")
+                                     ("subscribed-calendar-id@import.calendar.google.com" . "~/calendar.org")))
+   #+end_src
+
+   When =org-gcal-primary-account= is set, all calendars in =org-gcal-fetch-file-alist=
+   will authenticate using that account, so you only need to authorize once.
+
+   To find the calendar ID for shared or subscribed calendars:
+   1. Go to [[https://calendar.google.com][Google Calendar]]
+   2. Click on the three dots next to the calendar name
+   3. Select "Settings"
+   4. Scroll down to "Integrate calendar" to find the Calendar ID
+
+   Note: Multiple Google accounts (with separate OAuth credentials) are not
+   supported. All calendars must be accessible from your primary account.
 
 ** Different timezone
 
