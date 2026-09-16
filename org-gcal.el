@@ -72,17 +72,13 @@
   :group 'org-gcal
   :type 'boolean)
 
-(defcustom org-gcal-dir
-  (concat user-emacs-directory "org-gcal/")
-  "File in which to save token."
-  :group 'org-gcal
-  :type 'string)
+(make-obsolete-variable
+ 'org-gcal-dir
+ "no longer used since tokens moved to `oauth2-auto-plstore'." "0.5")
 
-(defcustom org-gcal-token-file
-  (expand-file-name ".org-gcal-token" org-gcal-dir)
-  "File in which to save token."
-  :group 'org-gcal
-  :type 'string)
+(make-obsolete-variable
+ 'org-gcal-token-file
+ "no longer used since tokens moved to `oauth2-auto-plstore'." "0.5")
 
 (defcustom org-gcal-client-id nil
   "Client ID for OAuth."
